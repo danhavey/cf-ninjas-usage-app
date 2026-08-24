@@ -45,7 +45,6 @@
     },
     "dmg": {
       "title": "CF Ninjas AI Usage Widget",
-      "background": "build/background.png",
       "backgroundColor": "#121110",
       "iconSize": 116,
       "iconTextSize": 13,
