@@ -31,7 +31,8 @@
       "output": "dist"
     },
     "mac": {
-      "target": ["zip"],
+      "target": ["dmg"],
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
       "category": "public.app-category.productivity",
       "icon": "build/icon.png",
       "hardenedRuntime": true,
@@ -42,8 +43,19 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
     },
+    "dmg": {
+      "title": "CF Ninjas AI Usage Widget",
+      "background": "build/dmg-background.png",
+      "iconSize": 116,
+      "window": { "width": 600, "height": 400 },
+      "contents": [
+        { "x": 165, "y": 205, "type": "file" },
+        { "x": 435, "y": 205, "type": "link", "path": "/Applications" }
+      ]
+    },
     "win": {
       "target": ["zip"],
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}",
       "icon": "build/icon.png"
     }
   }

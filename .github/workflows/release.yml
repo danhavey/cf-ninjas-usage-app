@@ -26,7 +26,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mac-builds
-          path: dist/*.zip
+          path: dist/*.dmg
 
   build-win:
     runs-on: windows-latest
@@ -58,11 +58,13 @@ jobs:
         run: |
           set -eu
           mkdir -p out
-          mac_intel=$(find mac-builds -maxdepth 1 -iname "*-mac.zip" ! -iname "*arm64*")
-          mac_arm=$(find mac-builds -maxdepth 1 -iname "*arm64-mac.zip")
-          win_file=$(find win-builds -maxdepth 1 -iname "*-win.zip")
-          cp "$mac_intel" out/mac-x64.zip
-          cp "$mac_arm" out/mac-arm64.zip
+          # artifactName pins the arch into every filename, so these are exact.
+          mac_intel=$(find mac-builds -maxdepth 1 -iname "*-x64.dmg")
+          mac_arm=$(find mac-builds -maxdepth 1 -iname "*-arm64.dmg")
+          win_file=$(find win-builds -maxdepth 1 -iname "*-win-x64.zip")
+          test -n "$mac_intel" && test -n "$mac_arm" && test -n "$win_file"
+          cp "$mac_intel" out/mac-x64.dmg
+          cp "$mac_arm" out/mac-arm64.dmg
           cp "$win_file" out/win-x64.zip
           ls -la out
       - name: Upload to R2
@@ -70,6 +72,6 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx wrangler r2 object put cfninjas-usage-app-downloads/mac-x64.zip --file out/mac-x64.zip --remote
-          npx wrangler r2 object put cfninjas-usage-app-downloads/mac-arm64.zip --file out/mac-arm64.zip --remote
+          npx wrangler r2 object put cfninjas-usage-app-downloads/mac-x64.dmg --file out/mac-x64.dmg --remote
+          npx wrangler r2 object put cfninjas-usage-app-downloads/mac-arm64.dmg --file out/mac-arm64.dmg --remote
           npx wrangler r2 object put cfninjas-usage-app-downloads/win-x64.zip --file out/win-x64.zip --remote
