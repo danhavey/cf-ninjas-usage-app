@@ -1,0 +1,75 @@
+name: Build, sign, and publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: {}
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Build + sign + notarize (mac)
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --x64 --arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-builds
+          path: dist/*.zip
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npx electron-builder --win --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-builds
+          path: dist/*.zip
+
+  publish:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-builds
+          path: mac-builds
+      - uses: actions/download-artifact@v4
+        with:
+          name: win-builds
+          path: win-builds
+      - name: Normalize filenames
+        run: |
+          set -eu
+          mkdir -p out
+          mac_intel=$(find mac-builds -maxdepth 1 -iname "*-mac.zip" ! -iname "*arm64*")
+          mac_arm=$(find mac-builds -maxdepth 1 -iname "*arm64-mac.zip")
+          win_file=$(find win-builds -maxdepth 1 -iname "*-win.zip")
+          cp "$mac_intel" out/mac-x64.zip
+          cp "$mac_arm" out/mac-arm64.zip
+          cp "$win_file" out/win-x64.zip
+          ls -la out
+      - name: Upload to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler r2 object put cfninjas-usage-app-downloads/mac-x64.zip --file out/mac-x64.zip --remote
+          npx wrangler r2 object put cfninjas-usage-app-downloads/mac-arm64.zip --file out/mac-arm64.zip --remote
+          npx wrangler r2 object put cfninjas-usage-app-downloads/win-x64.zip --file out/win-x64.zip --remote
