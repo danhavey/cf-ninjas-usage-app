@@ -336,6 +336,107 @@ function stopPolling() {
 // Tray
 // -----------------------------------------------------------------------
 
+// -----------------------------------------------------------------------
+// Auto-update
+//
+// Updates are served from the same R2 bucket as the download page, under
+// /updates. electron-builder writes latest-mac.yml there alongside a .zip of
+// the app; Squirrel.Mac can only apply updates from a zip, which is why the
+// build produces both a .dmg (what a human downloads) and a .zip (what the
+// updater consumes).
+//
+// This only works on a signed build: macOS refuses to swap in an update whose
+// signature does not match the running app. Unsigned dev runs are skipped.
+// -----------------------------------------------------------------------
+
+let autoUpdater = null;
+let updateCheckInFlight = false;
+
+function getAutoUpdater() {
+  if (autoUpdater) return autoUpdater;
+  try {
+    autoUpdater = require("electron-updater").autoUpdater;
+  } catch (err) {
+    return null;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    updateCheckInFlight = false;
+    const { response } = await dialog.showMessageBox({
+      type: "info",
+      buttons: ["Restart Now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update ready",
+      message: `Version ${info && info.version ? info.version : ""} is ready to install.`.trim(),
+      detail: "The widget will restart to finish updating. It only takes a moment."
+    });
+    if (response === 0) {
+      app.isQuittingForReal = true;
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on("error", (err) => {
+    updateCheckInFlight = false;
+    console.error("[updater]", err && err.message ? err.message : err);
+  });
+
+  return autoUpdater;
+}
+
+// `interactive` is true when the user picked "Check for Updates…" themselves,
+// in which case silence would look broken - so we report "you're up to date"
+// and surface errors. Background checks stay quiet.
+function checkForUpdates(interactive) {
+  const updater = getAutoUpdater();
+
+  if (!updater || !app.isPackaged) {
+    if (interactive) {
+      dialog.showMessageBox({
+        type: "info",
+        message: "Updates are unavailable in this build",
+        detail: "Automatic updates only run in the installed, signed app."
+      });
+    }
+    return;
+  }
+
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+
+  updater
+    .checkForUpdates()
+    .then((result) => {
+      const available =
+        result && result.updateInfo && result.updateInfo.version !== app.getVersion();
+      if (!available) {
+        updateCheckInFlight = false;
+        if (interactive) {
+          dialog.showMessageBox({
+            type: "info",
+            message: "You're up to date",
+            detail: `Version ${app.getVersion()} is the latest release.`
+          });
+        }
+      }
+      // If an update *is* available it downloads on its own and the
+      // "update-downloaded" handler above takes it from here.
+    })
+    .catch((err) => {
+      updateCheckInFlight = false;
+      if (interactive) {
+        dialog.showMessageBox({
+          type: "warning",
+          message: "Could not check for updates",
+          detail: err && err.message ? err.message : String(err)
+        });
+      }
+    });
+}
+
 function createTray() {
   const img = nativeImage.createFromPath(iconPath()).resize({ width: 18, height: 18 });
   tray = new Tray(img);
@@ -350,6 +451,8 @@ function refreshTrayMenu() {
   const menu = Menu.buildFromTemplate([
     { label: "Show widget", click: () => createMainWindow() },
     { label: "Refresh now", click: () => fetchUsage() },
+    { type: "separator" },
+    { label: "Check for Updates…", click: () => checkForUpdates(true) },
     { type: "separator" },
     { label: "Log in to claude.ai…", click: () => getOrCreateAuthWindow(true) },
     {
@@ -540,6 +643,12 @@ app.whenReady().then(async () => {
       authWindow.focus();
     }
   }, 3000);
+
+  // Quiet background update checks: once shortly after launch (not instantly,
+  // so it never competes with the login flow), then every six hours for
+  // machines that stay up for days.
+  setTimeout(() => checkForUpdates(false), 15 * 1000);
+  setInterval(() => checkForUpdates(false), 6 * 60 * 60 * 1000);
 });
 
 app.on("window-all-closed", () => {
