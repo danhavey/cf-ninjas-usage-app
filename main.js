@@ -3,7 +3,7 @@
 // claude.ai's own usage endpoints - the same ones its Settings > Usage page
 // calls - using a session you log into once, right here in this app.
 
-const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage } = require("electron");
+const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -226,7 +226,15 @@ function createMainWindow() {
     }
   });
 
-  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // NOTE: `visibleOnFullScreen: true` is deliberately NOT set here. On macOS a
+  // window can only float above *other* apps' fullscreen spaces if the app
+  // demotes itself to accessory (LSUIElement-style) status, and accessory apps
+  // get no Dock icon. Joining all workspaces is fine on its own; it is the
+  // fullscreen option specifically that costs the Dock icon.
+  mainWindow.setVisibleOnAllWorkspaces(true);
+  // Re-assert the Dock icon after the window exists, in case any window-level
+  // call above nudged the activation policy.
+  if (process.platform === "darwin" && app.dock) app.dock.show();
   mainWindow.loadFile("widget.html");
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
@@ -416,7 +424,62 @@ ipcMain.handle("runtime-message", async (event, msg) => {
 // App lifecycle
 // -----------------------------------------------------------------------
 
+// On macOS, an app run from ~/Downloads is subject to App Translocation (it
+// runs from a randomized read-only path), which breaks updates and generally
+// misbehaves. Offer to move ourselves into /Applications on first launch.
+// moveToApplicationsFolder() relaunches the app on success, so nothing after
+// it in this function will run in that case.
+function offerMoveToApplications() {
+  if (process.platform !== "darwin") return;
+  if (!app.isPackaged) return;
+  if (app.isInApplicationsFolder()) return;
+
+  const { response } = dialog.showMessageBoxSync
+    ? { response: dialog.showMessageBoxSync({
+        type: "question",
+        buttons: ["Move to Applications", "Not Now"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Move to Applications?",
+        message: "Move CF Ninjas AI Usage Widget to your Applications folder?",
+        detail:
+          "Keeping the app in Applications lets macOS run and update it properly. " +
+          "This takes a second and the app will reopen by itself."
+      }) }
+    : { response: 1 };
+
+  if (response !== 0) return;
+
+  try {
+    app.moveToApplicationsFolder({
+      conflictHandler: (conflict) => {
+        if (conflict === "existsAndRunning") {
+          dialog.showMessageBoxSync({
+            type: "info",
+            message: "Already running from Applications",
+            detail:
+              "A copy is already open from your Applications folder. Quit that " +
+              "copy first, then try again."
+          });
+          return false;
+        }
+        return true;
+      }
+    });
+  } catch (err) {
+    dialog.showMessageBoxSync({
+      type: "warning",
+      message: "Could not move the app",
+      detail:
+        "Drag CF Ninjas AI Usage Widget into your Applications folder manually. " +
+        "(" + (err && err.message ? err.message : String(err)) + ")"
+    });
+  }
+}
+
 app.whenReady().then(async () => {
+  offerMoveToApplications();
+
   createTray();
 
   // Make sure we get a normal Dock icon (right-click it -> Quit, or Cmd+Q,
