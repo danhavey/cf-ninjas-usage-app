@@ -1,0 +1,47 @@
+{
+  "name": "cf-ninjas-claude-usage-widget",
+  "productName": "CF Ninjas AI Usage Widget",
+  "version": "1.0.0",
+  "description": "Always-on-top desktop widget showing your Claude account's 5-hour, weekly, and credit usage.",
+  "main": "main.js",
+  "author": "CF Ninjas AI",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "ai.cfninjas.claudeusagewidget",
+    "productName": "CF Ninjas AI Usage Widget",
+    "publish": null,
+    "files": [
+      "main.js",
+      "preload.js",
+      "widget.html",
+      "widget.css",
+      "widget.js",
+      "jquery.min.js",
+      "icons/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": ["zip"],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+      "target": ["zip"],
+      "icon": "build/icon.png"
+    }
+  }
+}

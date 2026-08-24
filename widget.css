@@ -1,0 +1,367 @@
+:root {
+  --bg: #faf9f6;
+  --panel: #ffffff;
+  --panel-alt: #f2efe9;
+  --text: #262421;
+  --text-dim: #7a7369;
+  --border: #e7e2da;
+  --track: #e7e0d4;
+  --ring-glow: rgba(204, 120, 92, 0.25);
+  --good: #3f9d5d;
+  --bad: #d1483f;
+}
+
+:root[data-theme="dark"] {
+  --bg: #17150f;
+  --panel: #201d17;
+  --panel-alt: #29251d;
+  --text: #f5f0e8;
+  --text-dim: #a49b8c;
+  --border: #35301f;
+  --track: #35301f;
+  --ring-glow: rgba(204, 120, 92, 0.35);
+  --good: #57c179;
+  --bad: #e2564c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  /* Electron build only: frame:false means the OS gives us no title bar to
+     drag by, so we have to declare one ourselves. Buttons inside opt back
+     out below, or they'd stop being clickable. No-op in the Chrome
+     extension (that property is simply ignored there). */
+  -webkit-app-region: drag;
+}
+
+#brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #cc785c;
+}
+
+#brand #title {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  font-size: 13.5px;
+}
+
+#titleActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+#titleActions button {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+#titleActions button:hover {
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+#refreshBtn.spinning {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+#content {
+  flex: 1;
+  padding: 10px 12px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+/* Peak / off-peak indicator */
+#peakRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dot.off-peak {
+  background: var(--good);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent);
+}
+
+.dot.peak {
+  background: var(--bad);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(226, 86, 76, 0.55); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 5px rgba(226, 86, 76, 0); }
+}
+
+/* Rings */
+#rings {
+  display: flex;
+  gap: 10px;
+}
+
+.ring-card {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ring-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  filter: drop-shadow(0 0 6px var(--ring-glow));
+}
+
+.ring-track {
+  fill: none;
+  stroke: var(--track);
+  stroke-width: 10;
+}
+
+.ring-progress {
+  fill: none;
+  stroke: #16a34a;
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-dasharray: 326.7256;
+  stroke-dashoffset: 326.7256;
+  transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease;
+}
+
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+}
+
+.ring-pct {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ring-pct-sign {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ring-label {
+  margin-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+}
+
+.ring-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* Usage credits bar */
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.stat-label {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.stat-value {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.bar {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #16a34a;
+  border-radius: 4px;
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+.stat-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+#errorBox {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Activity heatmap */
+#activity {
+  padding-bottom: 4px;
+}
+
+#activityHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+#activityTitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+#activityToggle {
+  display: flex;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.toggleBtn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 10.5px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.toggleBtn.active {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 600;
+}
+
+#activityGrid {
+  display: grid;
+  grid-template-columns: 20px repeat(24, 1fr);
+  gap: 2px;
+  align-items: center;
+}
+
+.activity-hourlabel {
+  grid-row: 1;
+  font-size: 8px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.activity-daylabel {
+  font-size: 9px;
+  color: var(--text-dim);
+  padding-right: 3px;
+}
+
+.activity-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 2px;
+  background: var(--track);
+}
+
+#activityEmpty {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+#footer {
+  padding: 6px 12px 10px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-align: right;
+}
