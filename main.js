@@ -485,7 +485,21 @@ app.whenReady().then(async () => {
   // Make sure we get a normal Dock icon (right-click it -> Quit, or Cmd+Q,
   // both work as a backup to the X button and the tray menu) and a real
   // app menu, rather than relying on Electron's implicit default one.
-  if (app.dock) app.dock.show();
+  if (app.dock) {
+    app.dock.show();
+    // A packaged build gets its Dock icon from the bundled .icns, but `npm
+    // start` runs the stock Electron binary and would otherwise show the
+    // generic Electron logo. Setting it explicitly keeps dev and production
+    // looking the same.
+    try {
+      const dockIcon = nativeImage.createFromPath(
+        path.join(__dirname, "icons", "icon512.png")
+      );
+      if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
+    } catch (e) {
+      // Cosmetic only - never let this stop startup.
+    }
+  }
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
