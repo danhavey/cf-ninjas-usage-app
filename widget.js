@@ -419,6 +419,12 @@ $(function () {
     $("#minBtn").on("click", function () {
       chrome.runtime.sendMessage({ type: "minimize-window" });
     });
+    // A plain href would navigate the widget itself away from the app, so in
+    // the desktop build the link is handed to the OS browser instead.
+    $(document).on("click", "#brandLink", function (e) {
+      e.preventDefault();
+      chrome.runtime.sendMessage({ type: "open-external", url: this.href });
+    });
     $(document).on("click", "#loginLink", function (e) {
       e.preventDefault();
       chrome.runtime.sendMessage({ type: "open-login" });

@@ -406,10 +406,28 @@ html, body {
 }
 
 #footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 6px 12px 10px;
   font-size: 10.5px;
   color: var(--text-dim);
-  text-align: right;
+}
+
+/* Brand sits bottom-left and links out to the site. */
+#brandLink {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #cc785c;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.12s ease;
+}
+#brandLink:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
 /* ---- Binding limit + credit balance (v1.2.0) ---------------------------- */

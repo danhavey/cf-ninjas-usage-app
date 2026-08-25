@@ -3,7 +3,7 @@
 // claude.ai's own usage endpoints - the same ones its Settings > Usage page
 // calls - using a session you log into once, right here in this app.
 
-const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, dialog } = require("electron");
+const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -575,10 +575,18 @@ ipcMain.handle("runtime-message", async (event, msg) => {
     return {};
   }
   if (msg.type === "minimize-window") {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
-      return {};
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+    return {};
+  }
+  if (msg.type === "open-external") {
+    // Hand only https URLs to the OS browser - never file:// or a custom
+    // scheme, which is how a renderer could otherwise launch something local.
+    if (typeof msg.url === "string" && /^https:\/\//i.test(msg.url)) {
+      shell.openExternal(msg.url);
     }
-    if (msg.type === "quit-app") {
+    return {};
+  }
+  if (msg.type === "quit-app") {
     app.isQuittingForReal = true;
     app.quit();
     return {};
