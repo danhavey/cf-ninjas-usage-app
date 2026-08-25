@@ -100,20 +100,59 @@ async function fetchUsage() {
     const sevenDay = data.seven_day || {};
     const extra = data.extra_usage || {};
 
+    // `limits` grades each limit and flags which one is currently binding.
+    // Knowing that weekly (not the 5-hour) is what will actually stop you is
+    // the single most useful thing in this response.
+    const limits = Array.isArray(data.limits) ? data.limits : [];
+    const activeKind = (limits.find((l) => l && l.is_active) || {}).kind || null;
+
+    // Prepaid credit balance lives on a separate endpoint from usage. It is a
+    // different concept from spend: `used_credits` is what you have spent
+    // against your own monthly cap, while this is the money you still hold.
+    // Treated as best-effort - a failure here must not take the widget down.
+    let balanceDollars = null;
+    try {
+      const prepaid = await claudeApiFetch(
+        `https://claude.ai/api/organizations/${orgUuid}/prepaid/credits`
+      );
+      if (prepaid && typeof prepaid.amount === "number") {
+        balanceDollars = prepaid.amount / 100;
+      }
+    } catch (e) {
+      // No prepaid credits on this account, or the endpoint moved. Either way
+      // the balance is simply omitted rather than shown wrong.
+    }
+
     const stats = {
       ok: true,
       fetchedAt: Date.now(),
-      fiveHour: { percent: round(fiveHour.utilization), resetsAt: fiveHour.resets_at || null },
-      weekly: { percent: round(sevenDay.utilization), resetsAt: sevenDay.resets_at || null },
+      fiveHour: {
+        percent: round(fiveHour.utilization),
+        resetsAt: fiveHour.resets_at || null,
+        isActive: activeKind === "session"
+      },
+      weekly: {
+        percent: round(sevenDay.utilization),
+        resetsAt: sevenDay.resets_at || null,
+        isActive: activeKind === "weekly_all"
+      },
       credits: extra.is_enabled
         ? {
             enabled: true,
             percent: round(extra.utilization),
             usedDollars: centsToDollars(extra.used_credits),
             limitDollars: extra.monthly_limit != null ? extra.monthly_limit / 100 : null,
+            balanceDollars: balanceDollars,
+            limitReached: extra.spend_limit_reached === true,
             currency: extra.currency || "USD"
           }
-        : { enabled: false }
+        : {
+            enabled: false,
+            // Distinguish "you switched this off" from "never set up", so the
+            // widget can say something useful instead of just "off".
+            userDisabled: extra.user_disabled === true,
+            everEnabled: extra.credits_ever_enabled === true
+          }
     };
 
     await recordActivityIfIncreased(stats.fiveHour.percent);

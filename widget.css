@@ -365,3 +365,37 @@ html, body {
   color: var(--text-dim);
   text-align: right;
 }
+
+/* ---- Binding limit + credit balance (v1.2.0) ---------------------------- */
+
+/* The limit claude.ai reports as currently active: the one that will stop you
+   first. A quiet amber edge, not a klaxon - both limits still matter. */
+.ring-card.is-binding {
+  border-color: rgba(247, 165, 30, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(247, 165, 30, 0.12);
+}
+.ring-card.is-binding .ring-label::after {
+  content: " · ACTIVE";
+  color: var(--amber, #f7a51e);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* Spend and prepaid balance sit together but read as distinct values. */
+.stat-values {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+.stat-balance {
+  font-size: 11px;
+  color: #8d8574;
+  font-variant-numeric: tabular-nums;
+}
+.stat-balance.hidden { display: none; }
+
+#stat-credits.limit-reached .stat-sub {
+  color: #e2604a;
+  font-weight: 600;
+}

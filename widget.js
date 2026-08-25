@@ -218,19 +218,50 @@ function renderStats(stats) {
   setRing($("#ring-weekly"), $("#pct-weekly"), wk.percent);
   $("#sub-weekly").text(fmtResetsDayTime(wk.resetsAt));
 
+  // Flag whichever limit is actually binding right now - the one that will
+  // stop you first. claude.ai knows this but does not surface it.
+  $(".stat-card").removeClass("is-binding");
+  if (fh.isActive) $("#card-five-hour").addClass("is-binding");
+  if (wk.isActive) $("#card-weekly").addClass("is-binding");
+
   var cr = stats.credits || {};
   var $credits = $("#stat-credits");
+  $credits.removeClass("limit-reached");
+
   if (cr.enabled) {
     var used = cr.usedDollars != null ? "$" + cr.usedDollars.toFixed(2) : "--";
     var limit = cr.limitDollars != null ? "$" + cr.limitDollars.toFixed(2) : "--";
     $credits.find(".stat-value").text(used + " / " + limit);
-    $credits.find(".stat-sub").text(cr.percent != null ? cr.percent + "% used" : "");
+
+    var sub = cr.percent != null ? cr.percent + "% used" : "";
+    if (cr.limitReached) {
+      sub = "monthly spend limit reached";
+      $credits.addClass("limit-reached");
+    }
+    $credits.find(".stat-sub").text(sub);
+
+    // Prepaid balance is a different number from spend: what you still hold,
+    // rather than what you have spent against your own cap.
+    var $bal = $credits.find(".stat-balance");
+    if (cr.balanceDollars != null) {
+      $bal.text("$" + cr.balanceDollars.toFixed(2) + " left").removeClass("hidden");
+    } else {
+      $bal.addClass("hidden");
+    }
+
     var $fill = $credits.find(".bar-fill");
     $fill.css("width", (cr.percent == null ? 0 : Math.min(100, cr.percent)) + "%");
     $fill.css("background", ringColor(cr.percent));
   } else {
     $credits.find(".stat-value").text("off");
-    $credits.find(".stat-sub").text("usage credits are turned off");
+    $credits.find(".stat-sub").text(
+      cr.userDisabled
+        ? "you turned usage credits off"
+        : cr.everEnabled
+        ? "usage credits are turned off"
+        : "usage credits not set up"
+    );
+    $credits.find(".stat-balance").addClass("hidden");
     $credits.find(".bar-fill").css("width", "0%");
   }
 
