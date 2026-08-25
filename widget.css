@@ -54,11 +54,8 @@ html, body {
   align-items: center;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
-  /* Electron build only: frame:false means the OS gives us no title bar to
-     drag by, so we have to declare one ourselves. Buttons inside opt back
-     out below, or they'd stop being clickable. No-op in the Chrome
-     extension (that property is simply ignored there). */
-  -webkit-app-region: drag;
+  /* Drag is declared on <body> now (see the block at the end of this file),
+     so the whole widget is a handle, not just this strip. */
 }
 
 #brand {
@@ -447,4 +444,28 @@ html, body {
 #stat-credits.limit-reached .stat-sub {
   color: #e2604a;
   font-weight: 600;
+}
+
+
+/* ---- Window dragging ---------------------------------------------------- */
+
+/* frame:false means macOS gives us no title bar to grab, so the entire widget
+   acts as the drag handle - grab it anywhere, the way a floating panel should
+   behave. Everything clickable opts back out immediately below, or it would
+   stop responding to clicks entirely.
+   `-webkit-app-region` is an Electron property; it is simply ignored in the
+   Chrome extension build, so this is safe in both. */
+body {
+  -webkit-app-region: drag;
+}
+
+button,
+a,
+input,
+select,
+textarea,
+[role="button"],
+#windowControls,
+#titleActions {
+  -webkit-app-region: no-drag;
 }
