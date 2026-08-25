@@ -20,7 +20,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://usage.cfninjas.com/updates"
+        "url": "https://cfninjas-usage-app-download.dan4277.workers.dev/updates"
       }
     ],
     "files": [

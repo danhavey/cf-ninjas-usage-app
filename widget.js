@@ -408,8 +408,16 @@ $(function () {
   // Electron desktop build only - the Chrome extension shim never sets this
   // flag, so none of this runs there.
   if (window.__isElectron) {
-    $("#closeBtn").removeClass("hidden").on("click", function () {
+    // Traffic-light controls replace the lone X, and the theme toggle moves
+    // to the tray menu where the rest of the app-level actions already live.
+    $("#windowControls").removeClass("hidden");
+    $("#themeBtn").addClass("hidden");
+
+    $("#closeBtn").on("click", function () {
       chrome.runtime.sendMessage({ type: "quit-app" });
+    });
+    $("#minBtn").on("click", function () {
+      chrome.runtime.sendMessage({ type: "minimize-window" });
     });
     $(document).on("click", "#loginLink", function (e) {
       e.preventDefault();

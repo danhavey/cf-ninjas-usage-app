@@ -479,6 +479,13 @@ function checkForUpdates(interactive) {
     });
 }
 
+// Theme moved out of the widget's title bar and into the tray, so the header
+// can be just the window controls and the centred app name.
+function setTheme(mode) {
+  setStoreValues({ theme: mode });
+  refreshTrayMenu();
+}
+
 function createTray() {
   const img = nativeImage.createFromPath(iconPath()).resize({ width: 18, height: 18 });
   tray = new Tray(img);
@@ -493,6 +500,16 @@ function refreshTrayMenu() {
   const menu = Menu.buildFromTemplate([
     { label: "Show widget", click: () => createMainWindow() },
     { label: "Refresh now", click: () => fetchUsage() },
+    { type: "separator" },
+    {
+      label: "Appearance",
+      submenu: ["dark", "light"].map((mode) => ({
+        label: mode === "dark" ? "Dark" : "Light",
+        type: "radio",
+        checked: (loadStore().theme || "dark") === mode,
+        click: () => setTheme(mode)
+      }))
+    },
     { type: "separator" },
     { label: "Check for Updates…", click: () => checkForUpdates(true) },
     { type: "separator" },
@@ -557,7 +574,11 @@ ipcMain.handle("runtime-message", async (event, msg) => {
     getOrCreateAuthWindow(true);
     return {};
   }
-  if (msg.type === "quit-app") {
+  if (msg.type === "minimize-window") {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+      return {};
+    }
+    if (msg.type === "quit-app") {
     app.isQuittingForReal = true;
     app.quit();
     return {};
