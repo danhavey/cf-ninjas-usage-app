@@ -117,7 +117,10 @@ async function fetchUsage() {
     };
 
     await recordActivityIfIncreased(stats.fiveHour.percent);
-    setStoreValues({ claudeUsageStats: stats });
+    // Remember that this machine has successfully authenticated at least once.
+    // Startup uses this to go straight to the widget instead of flashing the
+    // claude.ai login window at someone who is already signed in.
+    setStoreValues({ claudeUsageStats: stats, hasAuthedBefore: true });
     return stats;
   } catch (err) {
     const stats = {
@@ -624,6 +627,13 @@ app.whenReady().then(async () => {
     ])
   );
 
+  // A returning user should land on the widget, not watch a claude.ai window
+  // appear and vanish. If we have authenticated on this machine before, show
+  // the widget immediately with the last known numbers and re-check the
+  // session quietly in the background.
+  const returningUser = loadStore().hasAuthedBefore === true;
+  if (returningUser) createMainWindow();
+
   getOrCreateAuthWindow(false);
   // Try the fast path as soon as the page settles - covers the case where a
   // session cookie already exists and claude.ai redirects straight past
@@ -637,12 +647,15 @@ app.whenReady().then(async () => {
   // The actual guarantee: no matter what happened above (page loaded fine,
   // failed to load, is still loading, whatever), show *something* within a
   // few seconds so the app is never silently invisible.
+  // Last-resort visibility: if nothing at all is on screen after a few
+  // seconds, surface the login window so the app is never silently invisible.
+  // A returning user already has the widget up, so this stays out of the way.
   setTimeout(() => {
     if (authWindow && !authWindow.isDestroyed() && (!mainWindow || mainWindow.isDestroyed())) {
       authWindow.show();
       authWindow.focus();
     }
-  }, 3000);
+  }, returningUser ? 12000 : 3000);
 
   // Quiet background update checks: once shortly after launch (not instantly,
   // so it never competes with the login flow), then every six hours for
