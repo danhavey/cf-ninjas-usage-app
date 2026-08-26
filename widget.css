@@ -397,14 +397,15 @@ html, body {
 
 #activityGrid {
   display: grid;
-  /* Fixed 14px hour columns rather than 1fr: the cells should be a constant,
-     comfortable size (matching the reference app) instead of shrinking to
-     whatever the window happens to be. main.js enforces a window width that
-     fits this exactly - see MIN_WINDOW_WIDTH. */
-  grid-template-columns: 18px repeat(24, 14px);
+  /* Hour columns flex, but the grid stops growing at the width where each
+     cell is exactly 14px (18px label + 24 x 14 + 25 x 2 gaps = 404px). So the
+     cells shrink to fit a narrow window and cap at 14px in a wide one -
+     no window-width minimum needed, and dragging the window wider is a live
+     preview of the larger squares. Change both numbers together. */
+  grid-template-columns: 18px repeat(24, 1fr);
+  max-width: 404px;
   gap: 2px;
   align-items: center;
-  justify-content: start;
 }
 
 .activity-hourlabel {
@@ -421,8 +422,9 @@ html, body {
 }
 
 .activity-cell {
-  width: 14px;
-  height: 14px;
+  width: 100%;
+  max-width: 14px;
+  aspect-ratio: 1 / 1;
   border-radius: 3px;
   background: var(--heatmap-0);
   /* Sits on top of drag so the pointer can actually rest on a cell. */

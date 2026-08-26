@@ -11,9 +11,8 @@ const PARTITION = "persist:cfninjas-claude-usage";
 const POLL_MS = 60 * 1000;
 const STORE_PATH = path.join(app.getPath("userData"), "store.json");
 const ACTIVITY_MAX_DAYS = 35;
-// 18px day-label column + 24 x 14px cells + 25 x 2px gaps + 12px page padding
-// either side. Below this the heatmap cannot lay out.
-const MIN_WINDOW_WIDTH = 430;
+const MIN_WINDOW_WIDTH = 300;
+const DEFAULT_WINDOW_WIDTH = 340;
 
 let mainWindow = null;
 let authWindow = null; // stays alive (hidden once logged in) - it's our
@@ -235,11 +234,18 @@ async function recordActivitySample(newPercent) {
 
 function getSavedBounds() {
   const store = loadStore();
-  const b = store.windowBounds || { width: MIN_WINDOW_WIDTH, height: 600 };
-  // The activity heatmap is 24 fixed-width hour columns; anything narrower
-  // than this clips it. Older installs have a saved 340px width, so widen
-  // them once rather than shipping a broken-looking grid.
-  if (!b.width || b.width < MIN_WINDOW_WIDTH) b.width = MIN_WINDOW_WIDTH;
+  const b = store.windowBounds || { width: DEFAULT_WINDOW_WIDTH, height: 600 };
+  // v1.4.0 briefly forced a 430px minimum so the heatmap's fixed 14px cells
+  // would fit. The cells flex now, so undo that widening once - otherwise
+  // anyone who ran 1.4.0 is stuck with a window they never asked for. The
+  // flag makes this a one-time correction, not a permanent width cap.
+  if (!store.widthRevert140 && b.width >= 430) {
+    b.width = DEFAULT_WINDOW_WIDTH;
+    store.widthRevert140 = true;
+    store.windowBounds = b;
+    saveStore(store);
+  }
+  if (!b.width || b.width < MIN_WINDOW_WIDTH) b.width = DEFAULT_WINDOW_WIDTH;
   return b;
 }
 
