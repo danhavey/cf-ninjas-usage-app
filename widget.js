@@ -421,7 +421,7 @@ $(function () {
     });
     // A plain href would navigate the widget itself away from the app, so in
     // the desktop build the link is handed to the OS browser instead.
-    $(document).on("click", "#brandLink", function (e) {
+    $(document).on("click", ".extLink", function (e) {
       e.preventDefault();
       chrome.runtime.sendMessage({ type: "open-external", url: this.href });
     });

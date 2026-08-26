@@ -406,9 +406,11 @@ html, body {
 }
 
 #footer {
-  display: flex;
+  /* Three tracks so the middle link is centred in the window rather than
+     merely between the two items beside it. */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 6px 12px 10px;
   font-size: 10.5px;
@@ -487,3 +489,13 @@ textarea,
 #titleActions {
   -webkit-app-region: no-drag;
 }
+
+#claudeLink {
+  justify-self: center;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+#claudeLink:hover { color: #cc785c; text-decoration: underline; }
+
+#updatedAt { justify-self: end; }

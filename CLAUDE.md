@@ -118,3 +118,27 @@ plan. These builds are ~100 MB, so R2 is mandatory.
 
 **Custom domain on a Worker** needs zone-level **Workers Routes: Edit** on the
 API token, on top of the account-level Workers permissions.
+
+**Cloudflare bot protection blocks auto-update.** Bot Fight Mode challenges any
+non-browser client, and an updater can never solve a challenge - it gets an HTML
+interstitial instead of `latest-mac.yml` and fails with a 403. On the Free plan
+this cannot be skipped per-path. The fix here: keep `workers_dev: true` so the
+update feed is served from the `workers.dev` hostname, which sits outside the
+zone, while humans keep downloading from the custom domain. Recognise it by a
+403 whose headers include `cf-mitigated: challenge`.
+
+**Prepaid credit balance is a separate endpoint.** `/usage` returns
+`spend.balance: null`; the real balance is at
+`/api/organizations/{id}/prepaid/credits` as `amount` in cents. Spend (used
+against your own monthly cap) and balance (what you still hold) are different
+numbers - show both.
+
+**The `usage` response carries a `limits` array** with `is_active` marking which
+limit is currently binding. Most decision-useful field in the payload, and
+neither claude.ai nor ClaudeKarma surfaces it. Do NOT use its `severity` field
+for colours if you already interpolate a gradient from the percentage - three
+buckets is coarser than what you have.
+
+**Ignore the codename buckets** in that response (`nimbus_quill`, `tangelo`,
+`iguana_necktie`, `cinder_cove`, `amber_ladder`, `seven_day_opus`, ...). They are
+null on consumer plans and can change without notice.
