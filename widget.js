@@ -280,31 +280,10 @@ function loadStatsFromStorage() {
 // ---------------------------------------------------------------------
 
 var DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+var MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 var HOUR_TICKS = [0, 3, 6, 9, 12, 15, 18, 21];
 var activityRange = "week";
-
-function buildActivityGrid() {
-  var $grid = $("#activityGrid");
-  $grid.empty();
-
-  // corner spacer
-  $grid.append('<div class="activity-hourlabel"></div>');
-  for (var h = 0; h < 24; h++) {
-    var label = HOUR_TICKS.indexOf(h) !== -1
-      ? (h === 0 ? "12a" : h < 12 ? h + "a" : h === 12 ? "12p" : (h - 12) + "p")
-      : "";
-    $grid.append('<div class="activity-hourlabel">' + label + "</div>");
-  }
-
-  for (var d = 0; d < 7; d++) {
-    $grid.append('<div class="activity-daylabel">' + DAY_LABELS[d] + "</div>");
-    for (var hh = 0; hh < 24; hh++) {
-      $grid.append(
-        '<div class="activity-cell" data-day="' + d + '" data-hour="' + hh + '"></div>'
-      );
-    }
-  }
-}
 
 function localDateKey(d) {
   var y = d.getFullYear();
@@ -313,67 +292,135 @@ function localDateKey(d) {
   return y + "-" + m + "-" + day;
 }
 
+// Five levels, 0-4, each covering 20% of the 5-hour limit. 68% -> level 3.
+function heatmapLevel(pct) {
+  if (typeof pct !== "number") return 0;
+  return Math.max(0, Math.min(4, Math.floor(pct / 20)));
+}
+
+function fmtHour(h) {
+  return String(h).padStart(2, "0") + ":00";
+}
+
+function hourTick(h) {
+  if (HOUR_TICKS.indexOf(h) === -1) return "";
+  if (h === 0) return "12a";
+  if (h < 12) return h + "a";
+  if (h === 12) return "12p";
+  return (h - 12) + "p";
+}
+
+// Week view rows are seven *actual* dates, so the tooltip can name the day.
+// Month view can't be - 30 rows won't fit - so it folds onto weekday rows and
+// reports the peak for that weekday/hour instead, which the tooltip says out
+// loud rather than implying a single date.
+function activityRows() {
+  var rows = [];
+  var today = new Date();
+  if (activityRange === "week") {
+    for (var i = 6; i >= 0; i--) {
+      var d = new Date(today);
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      rows.push({ label: DAY_LABELS[d.getDay()], date: d, keys: [localDateKey(d)] });
+    }
+  } else {
+    for (var w = 0; w < 7; w++) rows.push({ label: DAY_LABELS[w], date: null, keys: [] });
+    for (var j = 0; j < 30; j++) {
+      var dd = new Date(today);
+      dd.setDate(dd.getDate() - j);
+      rows[dd.getDay()].keys.push(localDateKey(dd));
+    }
+  }
+  return rows;
+}
+
 function renderActivity(activity) {
   var data = activity || {};
-  // counts[day][hour] = number of active pings observed
-  var counts = [[], [], [], [], [], [], []];
-  for (var d = 0; d < 7; d++) counts[d] = new Array(24).fill(0);
-
-  var today = new Date();
-  var daysBack = activityRange === "week" ? 7 : 30;
+  var rows = activityRows();
+  var $grid = $("#activityGrid");
   var any = false;
 
-  for (var i = 0; i < daysBack; i++) {
-    var day = new Date(today);
-    day.setDate(day.getDate() - i);
-    var key = localDateKey(day);
-    var dayData = data[key];
-    if (!dayData) continue;
-    var weekdayIndex = day.getDay();
-    for (var hourStr in dayData) {
-      var hour = +hourStr;
-      counts[weekdayIndex][hour] += dayData[hourStr];
-      any = true;
+  $grid.empty();
+  $grid.append('<div class="activity-hourlabel"></div>');
+  for (var h = 0; h < 24; h++) {
+    $grid.append('<div class="activity-hourlabel">' + hourTick(h) + "</div>");
+  }
+
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    $grid.append('<div class="activity-daylabel">' + row.label + "</div>");
+
+    for (var hh = 0; hh < 24; hh++) {
+      // Peak across the row's dates. `null` means we never sampled that hour,
+      // which is a different thing from having sampled it and seen 0%.
+      var peak = null;
+      for (var k = 0; k < row.keys.length; k++) {
+        var dayData = data[row.keys[k]];
+        if (!dayData) continue;
+        var v = dayData[hh];
+        if (typeof v !== "number") continue;
+        if (peak === null || v > peak) peak = v;
+      }
+      if (peak !== null) any = true;
+
+      var when = row.date
+        ? DAY_LABELS[row.date.getDay()] + " " + MONTH_LABELS[row.date.getMonth()] +
+          " " + row.date.getDate() + " " + fmtHour(hh)
+        : row.label + " " + fmtHour(hh) + " (30-day peak)";
+      var tip = when + " · " + (peak === null ? "no data" : peak + "%");
+
+      $grid.append(
+        $('<div class="activity-cell"></div>')
+          .attr("data-tip", tip)
+          .css("background", "var(--heatmap-" + heatmapLevel(peak) + ")")
+      );
     }
   }
 
-  var max = 1;
-  counts.forEach(function (row) {
-    row.forEach(function (v) {
-      if (v > max) max = v;
-    });
-  });
-
-  $("#activityGrid .activity-cell").each(function () {
-    var $cell = $(this);
-    var day = +$cell.attr("data-day");
-    var hour = +$cell.attr("data-hour");
-    var v = counts[day][hour];
-    if (v === 0) {
-      $cell.css("background", "var(--track)");
-    } else {
-      var intensity = Math.min(1, v / max);
-      // Keep the heatmap in shades of green (mirroring ClaudeKarma) rather
-      // than crossing into the amber/red "danger" end of the scale, which
-      // is reserved for the usage rings actually nearing a limit.
-      $cell.css("background", ringColor(intensity * 40));
-    }
-  });
-
   $("#activityEmpty").toggleClass("hidden", any);
-  $("#activityGrid").toggleClass("hidden", !any);
+  $("#heatmapLegend").toggleClass("hidden", !any);
+  $grid.toggleClass("hidden", !any);
 }
 
 function loadActivityFromStorage() {
-  chrome.storage.local.get("claudeActivity", function (result) {
-    renderActivity(result.claudeActivity);
+  chrome.storage.local.get("claudeHeatmap", function (result) {
+    renderActivity(result.claudeHeatmap);
   });
 }
+
+// Tooltip. Positioned against #activity and clamped to it, so a cell in the
+// far-left or far-right hour column can't push the bubble off the widget.
+$(document)
+  .on("mouseenter", ".activity-cell", function () {
+    var $cell = $(this);
+    var $tip = $("#heatmapTooltip");
+    var $anchor = $("#activity");
+
+    $tip.text($cell.attr("data-tip")).removeClass("hidden");
+
+    var cellTop = $cell.offset().top - $anchor.offset().top;
+    var cellLeft = $cell.offset().left - $anchor.offset().left;
+
+    var left = cellLeft + $cell.outerWidth() / 2 - $tip.outerWidth() / 2;
+    var maxLeft = $anchor.innerWidth() - $tip.outerWidth();
+    if (left < 0) left = 0;
+    if (left > maxLeft) left = Math.max(0, maxLeft);
+
+    var top = cellTop - $tip.outerHeight() - 5;
+    if (top < 0) top = cellTop + $cell.outerHeight() + 5;
+
+    $tip.css({ left: left + "px", top: top + "px" });
+  })
+  .on("mouseleave", ".activity-cell", function () {
+    $("#heatmapTooltip").addClass("hidden");
+  });
 
 $(".toggleBtn").on("click", function () {
   $(".toggleBtn").removeClass("active");
   $(this).addClass("active");
   activityRange = $(this).data("range");
+  $("#heatmapTooltip").addClass("hidden");
   loadActivityFromStorage();
 });
 
@@ -383,7 +430,6 @@ $(".toggleBtn").on("click", function () {
 
 $(function () {
   initTheme();
-  buildActivityGrid();
 
   loadStatsFromStorage();
   loadActivityFromStorage();
@@ -392,7 +438,7 @@ $(function () {
   chrome.storage.onChanged.addListener(function (changes, area) {
     if (area !== "local") return;
     if (changes.claudeUsageStats) renderStats(changes.claudeUsageStats.newValue);
-    if (changes.claudeActivity) loadActivityFromStorage();
+    if (changes.claudeHeatmap) loadActivityFromStorage();
   });
 
   setInterval(loadStatsFromStorage, 15000);

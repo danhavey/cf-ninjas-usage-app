@@ -154,3 +154,23 @@ buckets is coarser than what you have.
 **Ignore the codename buckets** in that response (`nimbus_quill`, `tangelo`,
 `iguana_necktie`, `cinder_cove`, `amber_ladder`, `seven_day_opus`, ...). They are
 null on consumer plans and can change without notice.
+
+**The activity heatmap stores percentages, not counts.** The first build wrote
+`claudeActivity` as an increment count per hour (1, 2, 3...). The heatmap now
+needs a real number for its hover tooltip, so it stores the *peak* 5-hour
+utilisation seen in each local hour under a new key, `claudeHeatmap`. Reusing
+the old key would have rendered stale counts of 1-3 as "1%"-"3%", which looks
+plausible and is wrong - hence the new key plus a one-time delete of the old
+one. Take the max, not the last value: the 5-hour window resets on its own, so
+a later sample in the same hour is legitimately lower.
+
+**Heatmap cells are a fixed 14px, so the window has a hard minimum width.**
+24 hour columns x 14px + 25 x 2px gaps + an 18px day-label column + 12px page
+padding either side = 430px (`MIN_WINDOW_WIDTH` in main.js). Saved bounds from
+older installs are widened to that on load, otherwise the grid clips. If the
+cell size ever changes, change both numbers together.
+
+**Week view uses real dates; month view cannot.** Seven rows of actual dates
+let the tooltip say "Wed Aug 26 16:00". Thirty rows don't fit, so the month
+range folds onto weekday rows and reports the 30-day peak - and the tooltip
+says "(30-day peak)" rather than implying one specific date.

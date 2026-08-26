@@ -11,6 +11,9 @@ const PARTITION = "persist:cfninjas-claude-usage";
 const POLL_MS = 60 * 1000;
 const STORE_PATH = path.join(app.getPath("userData"), "store.json");
 const ACTIVITY_MAX_DAYS = 35;
+// 18px day-label column + 24 x 14px cells + 25 x 2px gaps + 12px page padding
+// either side. Below this the heatmap cannot lay out.
+const MIN_WINDOW_WIDTH = 430;
 
 let mainWindow = null;
 let authWindow = null; // stays alive (hidden once logged in) - it's our
@@ -155,7 +158,7 @@ async function fetchUsage() {
           }
     };
 
-    await recordActivityIfIncreased(stats.fiveHour.percent);
+    await recordActivitySample(stats.fiveHour.percent);
     // Remember that this machine has successfully authenticated at least once.
     // Startup uses this to go straight to the widget instead of flashing the
     // claude.ai login window at someone who is already signed in.
@@ -183,34 +186,46 @@ function localDateKey(d) {
   return `${y}-${m}-${day}`;
 }
 
-async function recordActivityIfIncreased(newPercent) {
-  if (typeof newPercent !== "number") return;
+// The heatmap stores the PEAK 5-hour utilisation observed in each local hour,
+// not a count of pings. Storing the percentage is what lets the UI put a real
+// number in the hover tooltip ("Wed Aug 26 16:00 - 68%") and bucket the cell
+// into one of five 20% levels. An hour can be sampled many times as the poller
+// runs; the highest reading wins, because that is the moment that hour actually
+// mattered. Note the 5-hour window resets on its own, so a later sample in the
+// same hour can legitimately be LOWER - taking the max is deliberate.
+//
+// Schema note: an earlier build wrote `claudeActivity` as small increment
+// counts (1, 2, 3...). Those would render as an absurd 1-3% here, so this uses
+// a new key and drops the old one rather than trying to reinterpret it.
+async function recordActivitySample(newPercent) {
+  if (typeof newPercent !== "number" || !isFinite(newPercent)) return;
   const store = loadStore();
-  const lastFiveHourPercent = store.lastFiveHourPercent;
   store.lastFiveHourPercent = newPercent;
 
-  if (typeof lastFiveHourPercent === "number" && newPercent > lastFiveHourPercent) {
-    const now = new Date();
-    const dateKey = localDateKey(now);
-    const hour = now.getHours();
+  if (store.claudeActivity) delete store.claudeActivity;
 
-    const data = store.claudeActivity || {};
-    data[dateKey] = data[dateKey] || {};
-    data[dateKey][hour] = (data[dateKey][hour] || 0) + 1;
+  const now = new Date();
+  const dateKey = localDateKey(now);
+  const hour = now.getHours();
 
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - ACTIVITY_MAX_DAYS);
-    const cutoffKey = localDateKey(cutoff);
-    Object.keys(data).forEach((k) => {
-      if (k < cutoffKey) delete data[k];
-    });
+  const data = store.claudeHeatmap || {};
+  data[dateKey] = data[dateKey] || {};
+  const prev = data[dateKey][hour];
+  const pct = Math.max(0, Math.min(100, Math.round(newPercent)));
+  data[dateKey][hour] = typeof prev === "number" ? Math.max(prev, pct) : pct;
 
-    store.claudeActivity = data;
-  }
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - ACTIVITY_MAX_DAYS);
+  const cutoffKey = localDateKey(cutoff);
+  Object.keys(data).forEach((k) => {
+    if (k < cutoffKey) delete data[k];
+  });
 
+  store.claudeHeatmap = data;
   saveStore(store);
-  if (mainWindow && !mainWindow.isDestroyed() && store.claudeActivity) {
-    mainWindow.webContents.send("storage-changed", "claudeActivity", store.claudeActivity);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("storage-changed", "claudeHeatmap", store.claudeHeatmap);
   }
 }
 
@@ -220,7 +235,12 @@ async function recordActivityIfIncreased(newPercent) {
 
 function getSavedBounds() {
   const store = loadStore();
-  return store.windowBounds || { width: 340, height: 600 };
+  const b = store.windowBounds || { width: MIN_WINDOW_WIDTH, height: 600 };
+  // The activity heatmap is 24 fixed-width hour columns; anything narrower
+  // than this clips it. Older installs have a saved 340px width, so widen
+  // them once rather than shipping a broken-looking grid.
+  if (!b.width || b.width < MIN_WINDOW_WIDTH) b.width = MIN_WINDOW_WIDTH;
+  return b;
 }
 
 function saveBoundsDebounced() {
@@ -252,7 +272,7 @@ function createMainWindow() {
     height: bounds.height,
     x: bounds.x,
     y: bounds.y,
-    minWidth: 300,
+    minWidth: MIN_WINDOW_WIDTH,
     minHeight: 420,
     frame: false,
     alwaysOnTop: true,
