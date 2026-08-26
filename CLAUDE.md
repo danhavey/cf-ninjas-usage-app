@@ -82,10 +82,18 @@ real logged-in page.
 the event never fires and the app launches completely invisible. Always have an
 unconditional timeout fallback that shows *something*.
 
-**Notarization config.** electron-builder 24 needs an explicit
-`mac.notarize` key. Leaving it out crashes with
-`Cannot destructure property 'appBundleId' of 'options'`. Setting **both**
-`dmg.background` and `dmg.backgroundColor` is a hard error - pick one.
+**Notarization config - and it changed between major versions.**
+electron-builder **24** wants an object: `"notarize": { "teamId": "XXXX" }`.
+Omitting it entirely crashes with
+`Cannot destructure property 'appBundleId' of 'options'`.
+electron-builder **26** wants a **boolean**: `"notarize": true`, taking the team
+id from the `APPLE_TEAM_ID` env var instead. Passing the v24 object to v26 fails
+schema validation with `configuration.mac.notarize should be a boolean` and the
+build dies in about 3 seconds, before signing. Check this first after any
+electron-builder major upgrade.
+
+Also: setting **both** `dmg.background` and `dmg.backgroundColor` is a hard
+error - pick one.
 
 **DMG background image never applied here - use `backgroundColor`.** Four
 attempts failed: an explicit `dmg.background` path, the conventional
