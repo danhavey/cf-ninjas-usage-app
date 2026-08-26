@@ -295,6 +295,7 @@ html, body {
 .stat-value {
   font-weight: 600;
   font-size: 13px;
+  color: var(--text-dim);
 }
 
 .bar {
@@ -326,6 +327,13 @@ html, body {
   font-size: 12px;
   color: var(--text-dim);
 }
+
+#errorBox a {
+  color: #ffffff;
+  text-decoration: underline;
+  font-weight: 600;
+}
+#errorBox a:hover { color: #f7a51e; }
 
 .hidden {
   display: none !important;
@@ -448,18 +456,21 @@ html, body {
 }
 
 /* Spend and prepaid balance sit together but read as distinct values. */
-.stat-values {
+/* Prepaid balance sits on its own line beneath the percentage, labelled, so
+   it cannot be mistaken for part of the spend figure above it. */
+.stat-balance-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  white-space: nowrap;
-}
-.stat-balance {
+  gap: 6px;
+  margin-top: 3px;
   font-size: 11px;
-  color: #8d8574;
+  color: var(--text-dim);
+}
+.stat-balance-row.hidden { display: none; }
+.stat-balance {
+  color: #cc785c;
   font-variant-numeric: tabular-nums;
 }
-.stat-balance.hidden { display: none; }
 
 #stat-credits.limit-reached .stat-sub {
   color: #e2604a;

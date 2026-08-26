@@ -28,7 +28,6 @@ signs and notarizes the Mac builds, and uploads everything to R2. The version in
 | `preload.js` | contextBridge surface for the renderer |
 | `widget.*` | Renderer (HTML/CSS/JS + jQuery) |
 | `build/icon.png` | 1024x1024 app icon, transparent corners |
-| `build/background.png` | DMG window artwork (+ `@2x`) |
 | `build/entitlements.mac.plist` | Hardened-runtime entitlements |
 | `.github/workflows/release.yml` | Build, sign, notarize, publish |
 
@@ -88,11 +87,16 @@ unconditional timeout fallback that shows *something*.
 `Cannot destructure property 'appBundleId' of 'options'`. Setting **both**
 `dmg.background` and `dmg.backgroundColor` is a hard error - pick one.
 
-**DMG background.** Put it at `build/background.png` (+ `background@2x.png`)
-and do NOT set `dmg.background` explicitly; auto-detection is the reliable path.
-Finder draws icon labels in the *viewer's* system text color and there is no way
-to override it, so design the artwork with a light band where the labels land.
-A DMG cannot request Dark Mode.
+**DMG background image never applied here - use `backgroundColor`.** Four
+attempts failed: an explicit `dmg.background` path, the conventional
+`build/background.png`, letting auto-detection find it, and supplying a
+`background.tiff` (which electron-builder checks first). Icon positions and
+window size from the same `.DS_Store` always applied, so the mechanism works and
+only the image does not. Whatever the cause, `dmg.backgroundColor` is reliable -
+use it and skip the artwork. Note the two are mutually exclusive: removing
+`backgroundColor` to try an image leaves you with a WHITE window, not a fallback.
+Also: Finder draws icon labels in the *viewer's* system text colour and there is
+no way to override it, and a DMG cannot request Dark Mode.
 
 **Icon.** Corners must be genuinely transparent - a rounded icon drawn on white
 renders as a white square in the Dock. Inset the artwork to 824x824 inside a

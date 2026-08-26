@@ -242,11 +242,12 @@ function renderStats(stats) {
 
     // Prepaid balance is a different number from spend: what you still hold,
     // rather than what you have spent against your own cap.
-    var $bal = $credits.find(".stat-balance");
+    var $balRow = $credits.find(".stat-balance-row");
     if (cr.balanceDollars != null) {
-      $bal.text("$" + cr.balanceDollars.toFixed(2) + " left").removeClass("hidden");
+      $balRow.find(".stat-balance").text("$" + cr.balanceDollars.toFixed(2));
+      $balRow.removeClass("hidden");
     } else {
-      $bal.addClass("hidden");
+      $balRow.addClass("hidden");
     }
 
     var $fill = $credits.find(".bar-fill");
@@ -261,7 +262,7 @@ function renderStats(stats) {
         ? "usage credits are turned off"
         : "usage credits not set up"
     );
-    $credits.find(".stat-balance").addClass("hidden");
+    $credits.find(".stat-balance-row").addClass("hidden");
     $credits.find(".bar-fill").css("width", "0%");
   }
 
