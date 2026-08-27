@@ -116,6 +116,14 @@ updater always concludes it is current - derive it from the git tag. Upload the
 zips *before* `latest-mac.yml`, and serve the manifest with `cache-control:
 no-cache`. Auto-update requires a signed build; it cannot work unsigned.
 
+**Update cadence: 15s after launch, on window show/focus, then every 6h.**
+The background interval alone is too slow to notice a release you just pushed -
+and worse, a check that fires during the ~10 minutes CI spends building and
+uploading correctly finds nothing, then waits another six hours. The show/focus
+hook covers the case that matters: opening the widget is when you care whether
+it is current. Throttled to once per 10 minutes, because a single tray click
+fires both `show` and `focus`.
+
 **Windows** has no auto-update here (needs NSIS, and an unsigned NSIS installer
 trips SmartScreen harder than a zip). Windows code signing is a separate paid
 certificate.

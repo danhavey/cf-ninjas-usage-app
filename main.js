@@ -336,6 +336,9 @@ function createMainWindow() {
   mainWindow.loadFile("widget.html");
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
+  mainWindow.on("show", maybeCheckForUpdates);
+  mainWindow.on("focus", maybeCheckForUpdates);
+
   mainWindow.on("moved", saveBoundsDebounced);
   mainWindow.on("resized", saveBoundsDebounced);
   mainWindow.on("close", (e) => {
@@ -455,6 +458,19 @@ function stopPolling() {
 
 let autoUpdater = null;
 let updateCheckInFlight = false;
+let lastUpdateCheckAt = 0;
+
+// Opening the widget is the moment you are most likely to care whether it is
+// current, so showing or focusing the window triggers a check. Throttled,
+// because "show" and "focus" both fire for a single click on the tray icon,
+// and because a window you are tabbing in and out of would otherwise hit the
+// update feed continuously.
+const FOCUS_CHECK_MIN_GAP_MS = 10 * 60 * 1000;
+
+function maybeCheckForUpdates() {
+  if (Date.now() - lastUpdateCheckAt < FOCUS_CHECK_MIN_GAP_MS) return;
+  checkForUpdates(false);
+}
 
 function getAutoUpdater() {
   if (autoUpdater) return autoUpdater;
@@ -510,6 +526,7 @@ function checkForUpdates(interactive) {
 
   if (updateCheckInFlight) return;
   updateCheckInFlight = true;
+  lastUpdateCheckAt = Date.now();
 
   updater
     .checkForUpdates()
