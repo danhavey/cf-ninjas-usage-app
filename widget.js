@@ -438,18 +438,22 @@ $(".toggleBtn").on("click", function () {
 // Compact view
 // ---------------------------------------------------------------------
 
-// Below this the two-across ring layout and the 24-column heatmap stop
-// working, so the widget flips to the stacked view whether or not the user
-// asked for it. Above it, the user's explicit choice wins.
+// Window width is the single source of truth for which view is showing.
+// An earlier version also kept a sticky user preference that could override
+// the width - which meant that once you had toggled to compact, dragging the
+// window wider left you in a stretched compact layout with no way back except
+// the button. Width-only is both simpler and what the drag gesture implies:
+// the toggle button does not set a mode, it just resizes the window, and the
+// layout follows. Window bounds are persisted, so the view still survives a
+// restart.
 var COMPACT_BREAKPOINT = 300;
-var COMPACT_WIDTH = 240;
+var COMPACT_WIDTH = 210;
 var COMPACT_HEIGHT = 550;
 var FULL_WIDTH = 340;
 var FULL_HEIGHT = 600;
-var compactPref = false;
 
 function isCompact() {
-  return compactPref || window.innerWidth < COMPACT_BREAKPOINT;
+  return window.innerWidth < COMPACT_BREAKPOINT;
 }
 
 function paintResets() {
@@ -458,8 +462,14 @@ function paintResets() {
   $("#sub-weekly").text(fmtResetsDayTime($("#sub-weekly").attr("data-iso"), compact));
 }
 
+// Resize fires continuously while dragging, so do the work only when the mode
+// actually flips.
+var lastCompactState = null;
+
 function applyCompact() {
   var compact = isCompact();
+  if (compact === lastCompactState) return;
+  lastCompactState = compact;
   $("body").toggleClass("compact", compact);
   $("#iconCompact").toggleClass("hidden", compact);
   $("#iconExpand").toggleClass("hidden", !compact);
@@ -471,18 +481,18 @@ function applyCompact() {
 }
 
 $("#compactBtn").on("click", function () {
-  compactPref = !isCompact();
-  chrome.storage.local.set({ compactPref: compactPref });
-  if (window.__isElectron) {
-    // Height too, or the shorter compact stack leaves a band of dead space
-    // above the footer.
-    chrome.runtime.sendMessage({
-      type: "resize-window",
-      width: compactPref ? COMPACT_WIDTH : FULL_WIDTH,
-      height: compactPref ? COMPACT_HEIGHT : FULL_HEIGHT
-    });
+  var goCompact = !isCompact();
+  if (!window.__isElectron) {
+    // No window to resize in the browser build - flip the class directly.
+    $("body").toggleClass("compact", goCompact);
+    return;
   }
-  applyCompact();
+  chrome.runtime.sendMessage({
+    type: "resize-window",
+    width: goCompact ? COMPACT_WIDTH : FULL_WIDTH,
+    height: goCompact ? COMPACT_HEIGHT : FULL_HEIGHT
+  });
+  // The resize event that follows drives applyCompact.
 });
 
 $(window).on("resize", applyCompact);
@@ -493,10 +503,6 @@ $(window).on("resize", applyCompact);
 
 $(function () {
   initTheme();
-  chrome.storage.local.get("compactPref", function (result) {
-    compactPref = result.compactPref === true;
-    applyCompact();
-  });
   applyCompact();
 
   loadStatsFromStorage();

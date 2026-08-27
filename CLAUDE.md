@@ -177,11 +177,17 @@ a `fetchInFlight` guard so a slow call can't stack up behind the next tick.
 
 **Compact view is a body class, not a second page.** `body.compact` restyles
 the one layout - title bar splits into two rows, rings stack, the credits bar
-and the heatmap drop out. Below `COMPACT_BREAKPOINT` (300px) it engages
-regardless of preference, because the two-across rings and 24-column heatmap
-genuinely cannot lay out; above it the user's explicit toggle wins. The toggle
-resizes the window as well as restyling, otherwise expanding leaves you in a
-240px window that immediately re-triggers the auto-flip.
+and the heatmap drop out. **Window width is the only thing that decides which
+view shows** (`COMPACT_BREAKPOINT`, 300px); the toggle button does not set a
+mode, it just resizes the window and the layout follows.
+
+The first version also kept a sticky user preference that could override the
+width. That was wrong, and the bug it caused is instructive: once you toggled
+to compact, dragging the window wider left you stretched-compact with no way
+back except the button, because the preference outranked the width. Two
+sources of truth for one piece of state, and the less obvious one won. Deriving
+the mode from width alone is simpler, matches what the drag gesture implies,
+and still survives a restart because window bounds are persisted anyway.
 
 **A `::after` set to `display: block` is as wide as its *parent*, not its
 grandparent.** The compact "ACTIVE" badge hangs off `.ring-label::after`, and
