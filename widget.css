@@ -611,10 +611,16 @@ body.compact .ring-pct-sign { font-size: 10px; }
 body.compact .ring-card { padding: 10px 8px 9px; }
 
 /* ACTIVE gets its own line here - " · ACTIVE" trailing the label would wrap
-   awkwardly at this width. */
+   awkwardly at this width. The ::after box inherits the *label's* width, not
+   the card's, so without an explicit text-align the shorter word sits
+   left-aligned under "5-HOUR LIMIT" and reads as a misalignment. */
+body.compact .ring-label {
+  text-align: center;
+}
 body.compact .ring-card.is-binding .ring-label::after {
   content: "ACTIVE";
   display: block;
+  text-align: center;
   margin-top: 2px;
 }
 
@@ -636,14 +642,23 @@ body.compact .stat-balance-row {
 
 body.compact #activity { display: none; }
 
-/* Footer stacks: timestamp, then the Claude.ai link. */
+/* Footer: timestamp on its own row, both links side by side beneath it.
+   There is room for both even at 240px, and the CF Ninjas link is the one
+   piece of branding a daily user actually sees. */
 body.compact #footer {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
   align-items: center;
-  gap: 3px;
+  gap: 3px 14px;
   padding: 4px 10px 10px;
 }
-body.compact #brandLink { display: none; }
-body.compact #updatedAt { order: 1; }
-body.compact #claudeLink { order: 2; }
+body.compact #updatedAt {
+  order: -1;
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+/* Compact is a single centred column - anything that defaults to start
+   alignment has to be told otherwise. */
+body.compact #content { text-align: center; }

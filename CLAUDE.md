@@ -175,6 +175,22 @@ genuinely cannot lay out; above it the user's explicit toggle wins. The toggle
 resizes the window as well as restyling, otherwise expanding leaves you in a
 240px window that immediately re-triggers the auto-flip.
 
+**A `::after` set to `display: block` is as wide as its *parent*, not its
+grandparent.** The compact "ACTIVE" badge hangs off `.ring-label::after`, and
+`.ring-card` centres its children - but that centres the *label*, and the
+pseudo-element's box then spans only the label's width, leaving the shorter
+word left-aligned inside it. Looks like a stray misalignment, is actually
+correct CSS. Needs its own `text-align: center`.
+
+**What `ACTIVE` means is INFERRED, not documented.** It is driven by
+`limits[].is_active` from the usage response. The working assumption is
+"the limit currently binding you", which matches observed behaviour (5-hour at
+100% flagged, weekly at 22% not). It has never been confirmed against
+documentation, and it could equally mean "a session window is currently open".
+If the flag is ever seen on the weekly ring while the 5-hour is low, the
+binding interpretation holds; if it only ever appears on the 5-hour ring, it
+does not, and the label should change.
+
 **Render changes before shipping them.** `playwright` + a stubbed
 `window.__cfninjas_chrome` loads widget.html straight from disk with fake stats
 and screenshots it at any width - no build, no notarization, no release cycle.
