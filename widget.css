@@ -569,3 +569,81 @@ textarea,
 #claudeLink:hover { color: #cc785c; text-decoration: underline; }
 
 #updatedAt { justify-self: end; }
+
+/* ---- Compact (stacked) view --------------------------------------------
+   One narrow column: title bar splits into two rows, the rings stack, and
+   the two widest things - the credits bar and the activity heatmap - drop
+   out entirely rather than being squeezed into illegibility. Everything
+   here is scoped to body.compact, so the full layout above is untouched. */
+
+body.compact #titlebar {
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "controls . actions"
+    "brand    brand brand";
+  row-gap: 8px;
+  padding: 10px 10px 8px;
+}
+body.compact #windowControls { grid-area: controls; }
+body.compact #titleActions   { grid-area: actions; }
+body.compact #brand          { grid-area: brand; text-align: center; }
+body.compact #title { font-size: 12.5px; }
+
+body.compact #content {
+  padding: 8px 10px 4px;
+  gap: 9px;
+}
+
+body.compact #peakRow {
+  justify-content: center;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+/* Rings stack instead of sitting side by side. */
+body.compact #rings {
+  flex-direction: column;
+  gap: 8px;
+}
+body.compact .ring-wrap { width: 74px; height: 74px; }
+body.compact .ring-pct { font-size: 17px; }
+body.compact .ring-pct-sign { font-size: 10px; }
+body.compact .ring-card { padding: 10px 8px 9px; }
+
+/* ACTIVE gets its own line here - " · ACTIVE" trailing the label would wrap
+   awkwardly at this width. */
+body.compact .ring-card.is-binding .ring-label::after {
+  content: "ACTIVE";
+  display: block;
+  margin-top: 2px;
+}
+
+/* Credits: label above value, no progress bar - the percentage line below
+   already says the same thing in less space. */
+body.compact #stat-credits { text-align: center; }
+body.compact .stat-row {
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+body.compact .stat-value { font-size: 13px; }
+body.compact .bar { display: none; }
+body.compact .stat-balance-row {
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+body.compact #activity { display: none; }
+
+/* Footer stacks: timestamp, then the Claude.ai link. */
+body.compact #footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px 10px;
+}
+body.compact #brandLink { display: none; }
+body.compact #updatedAt { order: 1; }
+body.compact #claudeLink { order: 2; }

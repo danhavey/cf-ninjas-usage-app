@@ -154,3 +154,29 @@ buckets is coarser than what you have.
 **Ignore the codename buckets** in that response (`nimbus_quill`, `tangelo`,
 `iguana_necktie`, `cinder_cove`, `amber_ladder`, `seven_day_opus`, ...). They are
 null on consumer plans and can change without notice.
+
+**A hidden BrowserWindow gets its renderer throttled, and that silently
+freezes polling.** Every usage fetch runs inside the hidden claude.ai auth
+window via `executeJavaScript`. Chromium throttles and eventually suspends
+timers and network in hidden/occluded renderers, so `fetch()` there simply
+never settles. Combined with a `claudeApiFetch` that had no timeout, the result
+was the worst possible failure mode: a stale reading, no error, no retry -
+"Updated 15m ago" on a widget that polls every 60s. Fix is three parts, all
+needed: `backgroundThrottling: false` on that window, `AbortSignal.timeout` in
+the page-side fetch, and an outer `Promise.race` timeout for when the renderer
+is wedged badly enough that the page-side abort timer never fires either. Plus
+a `fetchInFlight` guard so a slow call can't stack up behind the next tick.
+
+**Compact view is a body class, not a second page.** `body.compact` restyles
+the one layout - title bar splits into two rows, rings stack, the credits bar
+and the heatmap drop out. Below `COMPACT_BREAKPOINT` (300px) it engages
+regardless of preference, because the two-across rings and 24-column heatmap
+genuinely cannot lay out; above it the user's explicit toggle wins. The toggle
+resizes the window as well as restyling, otherwise expanding leaves you in a
+240px window that immediately re-triggers the auto-flip.
+
+**Render changes before shipping them.** `playwright` + a stubbed
+`window.__cfninjas_chrome` loads widget.html straight from disk with fake stats
+and screenshots it at any width - no build, no notarization, no release cycle.
+Two rounds of that caught a clipped credits block that would otherwise have
+cost a full tag-build-install loop to find.

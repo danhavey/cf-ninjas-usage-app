@@ -11,7 +11,7 @@ const PARTITION = "persist:cfninjas-claude-usage";
 const POLL_MS = 60 * 1000;
 const STORE_PATH = path.join(app.getPath("userData"), "store.json");
 const ACTIVITY_MAX_DAYS = 35;
-const MIN_WINDOW_WIDTH = 300;
+const MIN_WINDOW_WIDTH = 210;
 const DEFAULT_WINDOW_WIDTH = 340;
 
 let mainWindow = null;
@@ -72,16 +72,38 @@ function centsToDollars(v) {
   return typeof v === "number" ? v / 100 : null;
 }
 
+// Two layers of timeout, because they fail differently. AbortSignal aborts a
+// request the page is genuinely waiting on; the outer race covers the case
+// where the renderer itself is wedged, so nothing page-side - the abort timer
+// included - ever runs. Without the outer one a stuck fetch hangs forever and
+// the widget shows a stale number with no error at all, which is worse than
+// showing the error.
+const API_TIMEOUT_MS = 20 * 1000;
+
 async function claudeApiFetch(url) {
   if (!authWindow || authWindow.isDestroyed()) throw new Error("no_auth_window");
   const script = `
-    fetch(${JSON.stringify(url)}, { credentials: "include", headers: { Accept: "application/json" } })
+    fetch(${JSON.stringify(url)}, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(${API_TIMEOUT_MS - 2000})
+    })
       .then(function (r) {
         if (!r.ok) { throw new Error("http_" + r.status); }
         return r.json();
       })
   `;
-  return authWindow.webContents.executeJavaScript(script);
+  let timer;
+  try {
+    return await Promise.race([
+      authWindow.webContents.executeJavaScript(script),
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), API_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function findConsumerOrgUuid() {
@@ -93,7 +115,13 @@ async function findConsumerOrgUuid() {
   return (chatOrg || orgs[0]).uuid;
 }
 
+// Guards against a slow fetch overlapping the next poll tick and stacking up
+// requests against a page that is already struggling.
+let fetchInFlight = false;
+
 async function fetchUsage() {
+  if (fetchInFlight) return null;
+  fetchInFlight = true;
   try {
     const orgUuid = await findConsumerOrgUuid();
     const data = await claudeApiFetch(`https://claude.ai/api/organizations/${orgUuid}/usage`);
@@ -171,6 +199,8 @@ async function fetchUsage() {
     };
     setStoreValues({ claudeUsageStats: stats });
     return stats;
+  } finally {
+    fetchInFlight = false;
   }
 }
 
@@ -340,7 +370,13 @@ function getOrCreateAuthWindow(show) {
     show: !!show,
     webPreferences: {
       partition: PARTITION,
-      contextIsolation: true
+      contextIsolation: true,
+      // CRITICAL: this window is hidden for the life of the app, and Chromium
+      // throttles - eventually suspends - timers and network in hidden or
+      // occluded renderers. Every usage fetch runs inside this page, so a
+      // suspended renderer means fetch() never settles and the widget silently
+      // freezes on a stale reading. Symptom: "Updated 15m ago" with no error.
+      backgroundThrottling: false
     }
   });
 
@@ -598,6 +634,18 @@ ipcMain.handle("runtime-message", async (event, msg) => {
   }
   if (msg.type === "open-login") {
     getOrCreateAuthWindow(true);
+    return {};
+  }
+  if (msg.type === "resize-window") {
+    if (mainWindow && !mainWindow.isDestroyed() && typeof msg.width === "number") {
+      const b = mainWindow.getBounds();
+      mainWindow.setBounds({
+        x: b.x,
+        y: b.y,
+        width: Math.max(MIN_WINDOW_WIDTH, Math.round(msg.width)),
+        height: typeof msg.height === "number" ? Math.round(msg.height) : b.height
+      });
+    }
     return {};
   }
   if (msg.type === "minimize-window") {

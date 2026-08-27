@@ -153,26 +153,35 @@ function ringGlow(pct, alpha) {
   return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + alpha + ")";
 }
 
+// Reset times read as a clock time, not a countdown. A countdown forces you
+// to do arithmetic to answer the only question that matters - "can I start
+// something at 4?" - and it is stale the moment it is rendered, whereas
+// "Resets 8:27pm" stays true between polls.
+function fmtTimeOfDay(d) {
+  var s = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  // "8:27 PM" -> "8:27pm". 24-hour locales ("20:27") are left untouched.
+  return s.replace(/\s*([AP])\.?M\.?$/i, function (_m, ap) {
+    return ap.toLowerCase() + "m";
+  });
+}
+
 function fmtResetsIn(iso) {
   if (!iso) return "--";
   var d = new Date(iso);
   if (isNaN(d.getTime())) return "--";
-  var diffMs = d.getTime() - Date.now();
-  if (diffMs <= 0) return "resets soon";
-  var mins = Math.round(diffMs / 60000);
-  if (mins < 60) return "Resets in " + mins + "m";
-  var hours = Math.floor(mins / 60);
-  var rem = mins % 60;
-  return "Resets in " + hours + "h " + rem + "m";
+  if (d.getTime() - Date.now() <= 0) return "resets soon";
+  // A 5-hour window can roll past midnight, and a bare "1:15am" would look
+  // like it already passed.
+  var prefix = d.toDateString() !== new Date().toDateString() ? "tomorrow " : "";
+  return "Resets " + prefix + fmtTimeOfDay(d);
 }
 
-function fmtResetsDayTime(iso) {
+function fmtResetsDayTime(iso, shortDay) {
   if (!iso) return "--";
   var d = new Date(iso);
   if (isNaN(d.getTime())) return "--";
-  var day = d.toLocaleDateString(undefined, { weekday: "long" });
-  var time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return "Resets " + day + " · " + time;
+  var day = d.toLocaleDateString(undefined, { weekday: shortDay ? "short" : "long" });
+  return "Resets " + day + " · " + fmtTimeOfDay(d);
 }
 
 function setRing($svgCircle, $pctEl, pct) {
@@ -212,11 +221,12 @@ function renderStats(stats) {
 
   var fh = stats.fiveHour || {};
   setRing($("#ring-five-hour"), $("#pct-five-hour"), fh.percent);
-  $("#sub-five-hour").text(fmtResetsIn(fh.resetsAt));
+  $("#sub-five-hour").attr("data-iso", fh.resetsAt || "");
 
   var wk = stats.weekly || {};
   setRing($("#ring-weekly"), $("#pct-weekly"), wk.percent);
-  $("#sub-weekly").text(fmtResetsDayTime(wk.resetsAt));
+  $("#sub-weekly").attr("data-iso", wk.resetsAt || "");
+  paintResets();
 
   // Flag whichever limit is actually binding right now - the one that will
   // stop you first. claude.ai knows this but does not surface it.
@@ -425,11 +435,69 @@ $(".toggleBtn").on("click", function () {
 });
 
 // ---------------------------------------------------------------------
+// Compact view
+// ---------------------------------------------------------------------
+
+// Below this the two-across ring layout and the 24-column heatmap stop
+// working, so the widget flips to the stacked view whether or not the user
+// asked for it. Above it, the user's explicit choice wins.
+var COMPACT_BREAKPOINT = 300;
+var COMPACT_WIDTH = 240;
+var COMPACT_HEIGHT = 520;
+var FULL_WIDTH = 340;
+var FULL_HEIGHT = 600;
+var compactPref = false;
+
+function isCompact() {
+  return compactPref || window.innerWidth < COMPACT_BREAKPOINT;
+}
+
+function paintResets() {
+  var compact = isCompact();
+  $("#sub-five-hour").text(fmtResetsIn($("#sub-five-hour").attr("data-iso")));
+  $("#sub-weekly").text(fmtResetsDayTime($("#sub-weekly").attr("data-iso"), compact));
+}
+
+function applyCompact() {
+  var compact = isCompact();
+  $("body").toggleClass("compact", compact);
+  $("#iconCompact").toggleClass("hidden", compact);
+  $("#iconExpand").toggleClass("hidden", !compact);
+  $("#compactBtn").attr("title", compact ? "Full view" : "Compact view");
+  paintResets();
+  // The heatmap sizes its cells off the container, so it has to re-measure
+  // after the layout changes - and it is hidden in compact, so skip the work.
+  if (!compact) loadActivityFromStorage();
+}
+
+$("#compactBtn").on("click", function () {
+  compactPref = !isCompact();
+  chrome.storage.local.set({ compactPref: compactPref });
+  if (window.__isElectron) {
+    // Height too, or the shorter compact stack leaves a band of dead space
+    // above the footer.
+    chrome.runtime.sendMessage({
+      type: "resize-window",
+      width: compactPref ? COMPACT_WIDTH : FULL_WIDTH,
+      height: compactPref ? COMPACT_HEIGHT : FULL_HEIGHT
+    });
+  }
+  applyCompact();
+});
+
+$(window).on("resize", applyCompact);
+
+// ---------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------
 
 $(function () {
   initTheme();
+  chrome.storage.local.get("compactPref", function (result) {
+    compactPref = result.compactPref === true;
+    applyCompact();
+  });
+  applyCompact();
 
   loadStatsFromStorage();
   loadActivityFromStorage();
@@ -459,6 +527,7 @@ $(function () {
     // to the tray menu where the rest of the app-level actions already live.
     $("#windowControls").removeClass("hidden");
     $("#themeBtn").addClass("hidden");
+    $("#compactBtn").removeClass("hidden");
 
     $("#closeBtn").on("click", function () {
       chrome.runtime.sendMessage({ type: "quit-app" });
