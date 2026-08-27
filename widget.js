@@ -443,7 +443,7 @@ $(".toggleBtn").on("click", function () {
 // asked for it. Above it, the user's explicit choice wins.
 var COMPACT_BREAKPOINT = 300;
 var COMPACT_WIDTH = 240;
-var COMPACT_HEIGHT = 520;
+var COMPACT_HEIGHT = 550;
 var FULL_WIDTH = 340;
 var FULL_HEIGHT = 600;
 var compactPref = false;

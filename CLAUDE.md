@@ -182,14 +182,13 @@ pseudo-element's box then spans only the label's width, leaving the shorter
 word left-aligned inside it. Looks like a stray misalignment, is actually
 correct CSS. Needs its own `text-align: center`.
 
-**What `ACTIVE` means is INFERRED, not documented.** It is driven by
-`limits[].is_active` from the usage response. The working assumption is
-"the limit currently binding you", which matches observed behaviour (5-hour at
-100% flagged, weekly at 22% not). It has never been confirmed against
-documentation, and it could equally mean "a session window is currently open".
-If the flag is ever seen on the weekly ring while the 5-hour is low, the
-binding interpretation holds; if it only ever appears on the 5-hour ring, it
-does not, and the label should change.
+**`limits[].is_active` marks the binding limit - confirmed by observation.**
+The flag was seen on the 5-hour ring at 100% utilisation, and later on the
+7-day ring while the 5-hour sat at 25%. It moves, so it means "this is the
+limit that will stop you first", not "a session window is open". The visible
+`ACTIVE` badge was removed anyway - the signal is sound but the word did not
+explain itself, and an unexplained badge is worse than none. The amber card
+edge still marks it. Any future label needs to say what it means.
 
 **Render changes before shipping them.** `playwright` + a stubbed
 `window.__cfninjas_chrome` loads widget.html straight from disk with fake stats

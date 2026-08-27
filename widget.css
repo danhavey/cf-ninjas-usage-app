@@ -507,12 +507,11 @@ html, body {
   border-color: rgba(247, 165, 30, 0.45);
   box-shadow: inset 0 0 0 1px rgba(247, 165, 30, 0.12);
 }
-.ring-card.is-binding .ring-label::after {
-  content: " · ACTIVE";
-  color: var(--amber, #f7a51e);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
+/* The amber card edge marks whichever limit `limits[].is_active` flags - the
+   one that will stop you first. The word "ACTIVE" used to ride along here and
+   was removed: the signal is real (the flag does move between the two rings),
+   but the label did not explain itself. The border stays as a quiet hint.
+   Bring the text back only with wording that says what it means. */
 
 /* Spend and prepaid balance sit together but read as distinct values. */
 /* Prepaid balance sits on its own line beneath the percentage, labelled, so
@@ -520,14 +519,20 @@ html, body {
 .stat-balance-row {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 6px;
-  margin-top: 3px;
-  font-size: 11px;
+  margin-top: 6px;
+  /* Same type scale as the Monthly Usage / Limit row above: these are two
+     readings of the same thing (spent vs. still held) and shrinking one made
+     it read as a footnote to the other. */
+  font-size: 12px;
   color: var(--text-dim);
 }
 .stat-balance-row.hidden { display: none; }
 .stat-balance {
   color: #cc785c;
+  font-size: 13px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -610,18 +615,8 @@ body.compact .ring-pct { font-size: 17px; }
 body.compact .ring-pct-sign { font-size: 10px; }
 body.compact .ring-card { padding: 10px 8px 9px; }
 
-/* ACTIVE gets its own line here - " · ACTIVE" trailing the label would wrap
-   awkwardly at this width. The ::after box inherits the *label's* width, not
-   the card's, so without an explicit text-align the shorter word sits
-   left-aligned under "5-HOUR LIMIT" and reads as a misalignment. */
 body.compact .ring-label {
   text-align: center;
-}
-body.compact .ring-card.is-binding .ring-label::after {
-  content: "ACTIVE";
-  display: block;
-  text-align: center;
-  margin-top: 2px;
 }
 
 /* Credits: label above value, no progress bar - the percentage line below
