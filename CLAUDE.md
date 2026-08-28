@@ -124,6 +124,25 @@ hook covers the case that matters: opening the widget is when you care whether
 it is current. Throttled to once per 10 minutes, because a single tray click
 fires both `show` and `focus`.
 
+**Never use `actions/upload-artifact` just to move files between jobs.** The
+first version of this workflow built on macOS and Windows runners, uploaded
+~300MB of output as artifacts, then downloaded it all again in a third job that
+pushed it to R2. GitHub artifact storage is a *quota*, not scratch space, and
+every release consumed it permanently - so after enough releases every build
+died at the upload step with "Artifact storage quota has been hit. Unable to
+upload any new artifacts." Nothing about the code had changed.
+
+Artifacts are for things a human wants to download from the Actions UI. If a
+job can write to the real destination, have it write to the real destination.
+Each build job now uploads its own output to R2, which removes the quota
+dependency entirely and skips a 300MB round trip. Side effect worth knowing:
+the platforms are independent now, so a failing Windows build no longer blocks
+a good macOS release.
+
+If you hit the quota anyway, note the error says usage is recalculated every
+6-12 hours - deleting old artifacts does not free it immediately. Removing the
+uploads is the fix that works now.
+
 **Windows** has no auto-update here (needs NSIS, and an unsigned NSIS installer
 trips SmartScreen harder than a zip). Windows code signing is a separate paid
 certificate.

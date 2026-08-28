@@ -6,6 +6,15 @@ on:
       - "v*.*.*"
   workflow_dispatch: {}
 
+# NOTE: these jobs upload to R2 directly and deliberately use NO
+# actions/upload-artifact. An earlier version passed ~300MB of builds from the
+# build jobs to a separate publish job as artifacts, which meant every release
+# permanently consumed GitHub artifact storage - and after enough releases the
+# quota filled and all builds failed with "Artifact storage quota has been
+# hit". Artifacts are for things you want to download from the Actions UI, not
+# for moving files between jobs that could each just write to the destination.
+# Uploading in-place is also faster: no 300MB round trip.
+
 jobs:
   build-mac:
     runs-on: macos-latest
@@ -41,13 +50,46 @@ jobs:
       - name: List build output
         run: ls -la dist
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-builds
-          path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/latest-mac.yml
+      - name: Stage mac release files
+        run: |
+          set -eu
+          mkdir -p out/updates
+
+          # Stable, human-facing download names for the website.
+          mac_intel=$(find dist -maxdepth 1 -iname "*-x64.dmg")
+          mac_arm=$(find dist -maxdepth 1 -iname "*-arm64.dmg")
+          test -n "$mac_intel" && test -n "$mac_arm"
+          cp "$mac_intel" out/mac-x64.dmg
+          cp "$mac_arm" out/mac-arm64.dmg
+
+          # The updater feed keeps electron-builder's own filenames, because
+          # latest-mac.yml refers to them verbatim. Renaming these breaks it.
+          cp dist/latest-mac.yml out/updates/
+          for z in dist/*.zip; do cp "$z" out/updates/; done
+
+          echo "--- downloads ---"; ls -la out
+          echo "--- update feed ---"; ls -la out/updates
+          echo "--- latest-mac.yml ---"; cat out/updates/latest-mac.yml
+
+      - name: Upload mac builds to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -eu
+          B=cfninjas-usage-app-downloads
+
+          npx wrangler r2 object put "$B/mac-x64.dmg"   --file out/mac-x64.dmg   --remote
+          npx wrangler r2 object put "$B/mac-arm64.dmg" --file out/mac-arm64.dmg --remote
+
+          # Upload the zips first, then the manifest. If the manifest landed
+          # first, an app checking in that instant would try to download a zip
+          # that is not there yet.
+          for f in out/updates/*.zip; do
+            npx wrangler r2 object put "$B/updates/$(basename "$f")" --file "$f" --remote
+          done
+          npx wrangler r2 object put "$B/updates/latest-mac.yml" \
+            --file out/updates/latest-mac.yml --remote
 
   build-win:
     runs-on: windows-latest
@@ -68,64 +110,18 @@ jobs:
       - name: List build output
         shell: bash
         run: ls -la dist
-      - uses: actions/upload-artifact@v4
-        with:
-          name: win-builds
-          path: dist/*.zip
 
-  publish:
-    needs: [build-mac, build-win]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: mac-builds
-          path: mac-builds
-      - uses: actions/download-artifact@v4
-        with:
-          name: win-builds
-          path: win-builds
-
-      - name: Stage release files
-        run: |
-          set -eu
-          mkdir -p out/updates
-
-          # Stable, human-facing download names for the website.
-          mac_intel=$(find mac-builds -maxdepth 1 -iname "*-x64.dmg")
-          mac_arm=$(find mac-builds -maxdepth 1 -iname "*-arm64.dmg")
-          win_file=$(find win-builds -maxdepth 1 -iname "*-win-x64.zip")
-          test -n "$mac_intel" && test -n "$mac_arm" && test -n "$win_file"
-          cp "$mac_intel" out/mac-x64.dmg
-          cp "$mac_arm" out/mac-arm64.dmg
-          cp "$win_file" out/win-x64.zip
-
-          # The updater feed keeps electron-builder's own filenames, because
-          # latest-mac.yml refers to them verbatim. Renaming these breaks it.
-          cp mac-builds/latest-mac.yml out/updates/
-          for z in mac-builds/*.zip; do cp "$z" out/updates/; done
-
-          echo "--- downloads ---"; ls -la out
-          echo "--- update feed ---"; ls -la out/updates
-          echo "--- latest-mac.yml ---"; cat out/updates/latest-mac.yml
-
-      - name: Upload to R2
+      # Windows runs independently of mac now. If one platform's build fails
+      # the other still publishes, which is better than holding a good mac
+      # release hostage to a Windows problem.
+      - name: Upload windows build to R2
+        shell: bash
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -eu
           B=cfninjas-usage-app-downloads
-
-          npx wrangler r2 object put "$B/mac-x64.dmg"   --file out/mac-x64.dmg   --remote
-          npx wrangler r2 object put "$B/mac-arm64.dmg" --file out/mac-arm64.dmg --remote
-          npx wrangler r2 object put "$B/win-x64.zip"   --file out/win-x64.zip   --remote
-
-          # Upload the zips first, then the manifest. If the manifest landed
-          # first, an app checking in that instant would try to download a zip
-          # that is not there yet.
-          for f in out/updates/*.zip; do
-            npx wrangler r2 object put "$B/updates/$(basename "$f")" --file "$f" --remote
-          done
-          npx wrangler r2 object put "$B/updates/latest-mac.yml" \
-            --file out/updates/latest-mac.yml --remote
+          win_file=$(find dist -maxdepth 1 -iname "*-win-x64.zip")
+          test -n "$win_file"
+          npx wrangler r2 object put "$B/win-x64.zip" --file "$win_file" --remote
