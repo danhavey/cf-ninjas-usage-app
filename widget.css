@@ -9,14 +9,18 @@
   --ring-glow: rgba(204, 120, 92, 0.25);
   --good: #3f9d5d;
   --bad: #d1483f;
-  /* Heatmap: five levels, each covering 20% of the 5-hour limit.
-     Level 0 tracks the panel in light mode; the greens are shared with dark
-     so a screenshot of either theme reads the same. */
+  /* Heatmap: level 0 means NO usage, then five greens covering 20% each.
+     Level 0 must not double as "a little bit of usage" - bucketing 0-20% onto
+     the empty colour made every light hour invisible and the chart looked
+     broken while working exactly as specified. Level 0 tracks the panel in
+     light mode; the greens are shared with dark so a screenshot of either
+     theme reads the same. */
   --heatmap-0: #e7e0d4;
   --heatmap-1: #0e4429;
   --heatmap-2: #006d32;
   --heatmap-3: #26a641;
   --heatmap-4: #39d353;
+  --heatmap-5: #7ff2a3;
 }
 
 :root[data-theme="dark"] {
@@ -35,6 +39,7 @@
   --heatmap-2: #006d32;
   --heatmap-3: #26a641;
   --heatmap-4: #39d353;
+  --heatmap-5: #7ff2a3;
 }
 
 * {

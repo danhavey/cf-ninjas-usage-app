@@ -302,10 +302,14 @@ function localDateKey(d) {
   return y + "-" + m + "-" + day;
 }
 
-// Five levels, 0-4, each covering 20% of the 5-hour limit. 68% -> level 3.
+// Level 0 is reserved for NO usage - no sample at all, or a sampled 0%.
+// Real usage spans levels 1-5, each covering 20%: 1-20% -> 1, 21-40% -> 2,
+// and so on to 81-100% -> 5. The earlier version bucketed with floor(pct/20),
+// which put everything under 20% on the empty colour - so a 3% hour was
+// recorded correctly and drawn as though nothing had happened.
 function heatmapLevel(pct) {
-  if (typeof pct !== "number") return 0;
-  return Math.max(0, Math.min(4, Math.floor(pct / 20)));
+  if (typeof pct !== "number" || pct <= 0) return 0;
+  return Math.min(5, Math.ceil(pct / 20));
 }
 
 function fmtHour(h) {
