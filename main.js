@@ -118,6 +118,7 @@ async function findConsumerOrgUuid() {
 // Guards against a slow fetch overlapping the next poll tick and stacking up
 // requests against a page that is already struggling.
 let fetchInFlight = false;
+let lastFetchCompletedAt = 0;
 
 async function fetchUsage() {
   if (fetchInFlight) return null;
@@ -201,6 +202,7 @@ async function fetchUsage() {
     return stats;
   } finally {
     fetchInFlight = false;
+    lastFetchCompletedAt = Date.now();
   }
 }
 
@@ -336,8 +338,8 @@ function createMainWindow() {
   mainWindow.loadFile("widget.html");
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
-  mainWindow.on("show", maybeCheckForUpdates);
-  mainWindow.on("focus", maybeCheckForUpdates);
+  mainWindow.on("show", () => { maybeCheckForUpdates(); refreshOnFocus(); });
+  mainWindow.on("focus", () => { maybeCheckForUpdates(); refreshOnFocus(); });
 
   mainWindow.on("moved", saveBoundsDebounced);
   mainWindow.on("resized", saveBoundsDebounced);
@@ -407,7 +409,13 @@ function scheduleLoginCheck() {
 
 async function checkLoggedInFromAuthWindow() {
   if (!authWindow || authWindow.isDestroyed()) return;
-  if (mainWindow && !mainWindow.isDestroyed()) return; // already in
+  // "Already in" means polling is running, NOT that a window exists. Those
+  // came apart the moment returning users started getting their widget shown
+  // at startup: createMainWindow() had already run, so a `mainWindow` guard
+  // here returned before reaching startPolling() and the app never polled at
+  // all for anyone who had logged in before. It only ever refreshed when the
+  // user pressed the button. Guard on the thing you actually mean.
+  if (pollTimer) return;
   const url = authWindow.webContents.getURL();
   if (/\/login/.test(url)) return; // still sitting on the login page itself
 
@@ -416,7 +424,7 @@ async function checkLoggedInFromAuthWindow() {
     if (Array.isArray(orgs) && orgs.length > 0) {
       authWindow.hide();
       startPolling();
-      createMainWindow();
+      if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
     }
   } catch (e) {
     // Not logged in yet (or a transient hiccup) - the next navigation event
@@ -430,8 +438,25 @@ async function checkLoggedInFromAuthWindow() {
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
+  // Stamp now so the watchdog does not fire against a first fetch still in
+  // flight and restart a timer that is working fine.
+  lastFetchCompletedAt = Date.now();
   fetchUsage();
   pollTimer = setInterval(fetchUsage, POLL_MS);
+}
+
+// A silent freeze is the worst failure this widget has: it looks like it is
+// working and quietly shows you an old number. If the interval ever stops
+// producing - for any reason, including ones not yet understood - restart it
+// rather than sitting there looking fine.
+function startPollWatchdog() {
+  setInterval(() => {
+    if (!pollTimer) return; // not logged in yet; nothing to heal
+    if (Date.now() - lastFetchCompletedAt > 3 * POLL_MS) {
+      console.warn("[poll] no completed fetch in 3 cycles - restarting timer");
+      startPolling();
+    }
+  }, POLL_MS);
 }
 
 function stopPolling() {
@@ -470,6 +495,14 @@ const FOCUS_CHECK_MIN_GAP_MS = 10 * 60 * 1000;
 function maybeCheckForUpdates() {
   if (Date.now() - lastUpdateCheckAt < FOCUS_CHECK_MIN_GAP_MS) return;
   checkForUpdates(false);
+}
+
+// Looking at the widget is the moment the number matters most, so don't make
+// the user wait out the rest of the poll interval for it.
+function refreshOnFocus() {
+  if (!pollTimer) return;
+  if (Date.now() - lastFetchCompletedAt < 15 * 1000) return;
+  fetchUsage();
 }
 
 function getAutoUpdater() {
@@ -819,6 +852,7 @@ app.whenReady().then(async () => {
   // Quiet background update checks: once shortly after launch (not instantly,
   // so it never competes with the login flow), then every six hours for
   // machines that stay up for days.
+  startPollWatchdog();
   setTimeout(() => checkForUpdates(false), 15 * 1000);
   setInterval(() => checkForUpdates(false), 6 * 60 * 60 * 1000);
 });

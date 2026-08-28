@@ -163,6 +163,28 @@ buckets is coarser than what you have.
 `iguana_necktie`, `cinder_cove`, `amber_ladder`, `seven_day_opus`, ...). They are
 null on consumer plans and can change without notice.
 
+**Polling never started for returning users - a guard that meant the wrong
+thing.** `startPolling()` was called from exactly one place, inside
+`checkLoggedInFromAuthWindow()`, behind
+`if (mainWindow && !mainWindow.isDestroyed()) return; // already in`. That
+guard was correct when it was written. It broke silently later, when returning
+users started getting the widget shown at startup: `createMainWindow()` now ran
+*before* the login check, so the guard tripped and the function returned before
+ever reaching `startPolling()`. The app polled only on first-ever login; every
+launch after that refreshed only when the user pressed the button.
+
+Two lessons. First, **guard on the condition you actually mean** - "already in"
+meant "polling is running" (`if (pollTimer) return`), not "a window exists";
+the two were the same thing for one release and then were not. Second, an early
+return that guards several unrelated actions at once is a trap: the guard was
+about window creation, but it also gated polling, which nothing about the line
+suggested.
+
+Worth noting how long this hid. The symptom was a stale timestamp, which looks
+exactly like a network or throttling problem, and a previous real throttling bug
+in the same area (below) made that diagnosis feel confirmed. Check whether the
+work is being *scheduled* before investigating why it might be failing.
+
 **A hidden BrowserWindow gets its renderer throttled, and that silently
 freezes polling.** Every usage fetch runs inside the hidden claude.ai auth
 window via `executeJavaScript`. Chromium throttles and eventually suspends
