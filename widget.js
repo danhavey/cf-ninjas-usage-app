@@ -208,16 +208,39 @@ function renderStats(stats) {
   if (!stats) return;
 
   if (!stats.ok) {
-    $("#errorBox").removeClass("hidden");
-    if (window.__isElectron) {
-      $("#errorBox").html(
-        'Could not reach claude.ai. <a href="#" id="loginLink">Log in again</a>'
-      );
+    // Different causes need different actions from the user, so say which one
+    // it is instead of blaming the network for everything - including for
+    // their own deliberate sign-out.
+    var err = String(stats.error || "");
+    var msg, offerLogin = true;
+    if (err === "logged_out") {
+      msg = "Signed out.";
+    } else if (/^http_(401|403)$/.test(err)) {
+      msg = "Your claude.ai session expired.";
+    } else if (err === "unexpected_response_shape") {
+      msg = "claude.ai returned something unexpected. This usually means the app needs an update.";
+      offerLogin = false;
+    } else {
+      msg = "Could not reach claude.ai.";
     }
-    $("#updatedAt").text(fmtAgo(stats.fetchedAt) || "Not connected");
+
+    $("#errorBox").removeClass("hidden");
+    $("#errorBox").text(msg);
+    if (window.__isElectron && offerLogin) {
+      $("#errorBox").append(' <a href="#" id="loginLink">Log in again</a>');
+    }
+
+    // The rings still show the last good numbers, so mark them as not current
+    // and date them honestly. Stamping a failure "Updated just now" - which is
+    // what fetchedAt gives you - reads as though these figures are live.
+    $("#app").addClass("is-stale");
+    $("#updatedAt").text(
+      stats.lastSuccessAt ? "Last good reading " + fmtAgo(stats.lastSuccessAt).replace(/^Updated /, "") : "Not connected"
+    );
     return;
   }
   $("#errorBox").addClass("hidden");
+  $("#app").removeClass("is-stale");
 
   var fh = stats.fiveHour || {};
   setRing($("#ring-five-hour"), $("#pct-five-hour"), fh.percent);
@@ -355,6 +378,11 @@ function renderActivity(activity) {
   var $grid = $("#activityGrid");
   var any = false;
 
+  // The grid is rebuilt wholesale every time new data arrives. jQuery removing
+  // the hovered cell does not fire mouseleave, and the tooltip lives outside
+  // the grid, so without this it freezes on screen showing a stale reading.
+  $("#heatmapTooltip").addClass("hidden");
+
   $grid.empty();
   $grid.append('<div class="activity-hourlabel"></div>');
   for (var h = 0; h < 24; h++) {
@@ -398,6 +426,10 @@ function renderActivity(activity) {
 }
 
 function loadActivityFromStorage() {
+  // Compact mode hides the heatmap entirely; rebuilding 200 nodes a minute
+  // into a display:none container is pure waste. applyCompact() re-renders on
+  // the way back to full view.
+  if (typeof isCompact === "function" && isCompact()) return;
   chrome.storage.local.get("claudeHeatmap", function (result) {
     renderActivity(result.claudeHeatmap);
   });

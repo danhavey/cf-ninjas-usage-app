@@ -58,6 +58,35 @@ Verify signing works: `security find-identity -v -p codesigning`
 
 ---
 
+## Security posture (audited)
+
+Deliberate choices, so a later change does not undo them by accident:
+
+- **The widget window is pinned to `file://`** (`lockDownWidgetWindow`). It
+  carries the preload bridge, so anything loaded into it can read and write the
+  whole store, open external URLs and quit the app. `will-navigate`,
+  `will-redirect` and `setWindowOpenHandler` are all denied.
+- **The claude.ai window is deliberately NOT navigation-locked.** Third-party
+  SSO (Google, Apple) redirects off claude.ai by design, and blocking it would
+  break sign-in. The protection that matters is in `claudeApiFetch`: it checks
+  the live **origin** before running `executeJavaScript`, so the app will never
+  inject its script into, or trust JSON from, a page that is not claude.ai. A
+  URL substring check is not good enough here.
+- **Permissions are denied wholesale** on the claude.ai partition. A prompt
+  carrying this app's name is more persuasive than a browser's, so do not
+  loosen it without a concrete need.
+- **The two windows use separate partitions.** The widget makes no network
+  requests; it has no business sharing a cookie jar with the live session.
+- **IPC handlers verify `event.sender`** is the widget's webContents.
+- **No credential is ever written to `store.json`** - only usage numbers,
+  heatmap data and UI preferences. Keep it that way.
+- Still open, needs a build to verify: `build/entitlements.mac.plist` carries
+  electron-builder's default `disable-library-validation` and
+  `allow-dyld-environment-variables`. Stock Electron does not need either, and
+  together they let a local attacker inject an unsigned dylib into the signed
+  bundle that holds the claude.ai session. Removing them is likely safe but
+  must be tested end to end (build, notarize, launch) before shipping.
+
 ## Gotchas (each of these cost real debugging time)
 
 **No Dock icon.** `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })`
@@ -204,6 +233,20 @@ buckets is coarser than what you have.
 **Ignore the codename buckets** in that response (`nimbus_quill`, `tangelo`,
 `iguana_necktie`, `cinder_cove`, `amber_ladder`, `seven_day_opus`, ...). They are
 null on consumer plans and can change without notice.
+
+**Guard on the condition you mean, part two: "already logged in" is not "a
+window exists".** `checkLoggedInFromAuthWindow` hid the claude.ai window and
+created the widget inside one success branch, gated by a `mainWindow` check.
+Because Log out *hides* rather than destroys, a later re-login left both windows
+hidden with no sign anything had happened; and a manually opened login window
+was never hidden again once polling was running. Same root cause as the bug
+below, in the same function, found six weeks apart.
+
+**A failure timestamp is not an update timestamp.** `fetchedAt` is set on the
+error path too, so a failed poll rendered "Updated just now" beside rings still
+showing the last good numbers. The tray already blanked itself for exactly this
+reason - the window contradicted it. `stats.lastSuccessAt` now dates the numbers
+honestly and `#app.is-stale` dims them.
 
 **Polling never started for returning users - a guard that meant the wrong
 thing.** `startPolling()` was called from exactly one place, inside

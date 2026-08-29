@@ -6,6 +6,13 @@ on:
       - "v*.*.*"
   workflow_dispatch: {}
 
+# These jobs only need to read the repo. The default token permissions are
+# wider than that, and both runners handle the Developer ID certificate and the
+# R2 write token, so there is no reason to also hand them write access to the
+# repository.
+permissions:
+  contents: read
+
 # NOTE: these jobs upload to R2 directly and deliberately use NO
 # actions/upload-artifact. An earlier version passed ~300MB of builds from the
 # build jobs to a separate publish job as artifacts, which meant every release
@@ -20,6 +27,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        # Do not leave a usable GITHUB_TOKEN sitting in .git/config on a runner
+        # that also holds signing and deployment credentials.
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -95,6 +106,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        # Do not leave a usable GITHUB_TOKEN sitting in .git/config on a runner
+        # that also holds signing and deployment credentials.
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 20

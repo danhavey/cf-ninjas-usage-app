@@ -35,15 +35,11 @@ Use whichever matches the Mac it's running on. Drag it into
 
 ## First launch
 
-Since this isn't signed with an Apple Developer certificate ($99/year,
-skipped per your call), macOS Gatekeeper will block a plain double-click
-the first time. To get past that once:
-
-1. Right-click (or Control-click) the app in Applications
-2. Choose **Open**
-3. Click **Open** again in the dialog that appears
-
-After that first time, it opens normally like any other app.
+The app is signed with an Apple Developer ID and notarized by Apple, so it
+opens with a normal double-click. If macOS ever asks you to right-click and
+choose Open to get past Gatekeeper, something is wrong with that copy - it is
+not from us, or it was damaged in transit. Re-download it from
+https://usage.cfninjas.com rather than clicking through the warning.
 
 ## What happens on first run
 

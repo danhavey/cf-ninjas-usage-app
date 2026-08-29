@@ -347,11 +347,21 @@ html, body {
 }
 
 #errorBox a {
-  color: #ffffff;
+  /* Was #ffffff, which is invisible on the light theme's #f2efe9 panel - and
+     this link is the only in-widget way to recover from an expired session. */
+  color: var(--text);
   text-decoration: underline;
   font-weight: 600;
 }
 #errorBox a:hover { color: #f7a51e; }
+
+/* Numbers that are no longer current are dimmed rather than left looking
+   live. The widget's whole job is being trustworthy about "right now". */
+#app.is-stale #rings,
+#app.is-stale #stat-credits {
+  opacity: 0.45;
+  filter: saturate(0.5);
+}
 
 .hidden {
   display: none !important;

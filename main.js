@@ -8,6 +8,11 @@ const path = require("path");
 const fs = require("fs");
 
 const PARTITION = "persist:cfninjas-claude-usage";
+// The widget loads only local files and makes no network requests, so it has
+// no business sharing a cookie jar with the authenticated claude.ai session.
+// Separate partitions cost nothing and remove a whole class of "the privileged
+// window and the remote origin can see each other's storage" problems.
+const WIDGET_PARTITION = "persist:cfninjas-widget";
 const POLL_MS = 60 * 1000;
 const STORE_PATH = path.join(app.getPath("userData"), "store.json");
 const ACTIVITY_MAX_DAYS = 35;
@@ -37,7 +42,15 @@ function loadStore() {
 
 function saveStore(store) {
   try {
-    fs.writeFileSync(STORE_PATH, JSON.stringify(store));
+    // Write-then-rename. A plain writeFileSync that is interrupted (crash,
+    // force quit, full disk) leaves a truncated file, and loadStore swallows
+    // the resulting SyntaxError and returns {} - silently wiping the heatmap
+    // history, window bounds, theme and hasAuthedBefore all at once. rename is
+    // atomic on the same filesystem, so a reader sees either the old file or
+    // the new one, never a half-written one.
+    const tmp = STORE_PATH + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(store));
+    fs.renameSync(tmp, STORE_PATH);
   } catch (e) {
     console.error("Failed to write store:", e);
   }
@@ -82,6 +95,19 @@ const API_TIMEOUT_MS = 20 * 1000;
 
 async function claudeApiFetch(url) {
   if (!authWindow || authWindow.isDestroyed()) throw new Error("no_auth_window");
+  // executeJavaScript runs in whatever document currently occupies this
+  // webContents. Checking that it is still claude.ai - by ORIGIN, not by a
+  // substring of the URL - is what stops the app injecting its script into,
+  // and trusting JSON from, a page it was redirected to. It also turns a
+  // failed page load (chrome-error://) into a visible error instead of a
+  // permanently silent fetch failure.
+  let origin = "";
+  try {
+    origin = new URL(authWindow.webContents.getURL()).origin;
+  } catch (e) {
+    throw new Error("no_page");
+  }
+  if (origin !== "https://claude.ai") throw new Error("off_origin");
   const script = `
     fetch(${JSON.stringify(url)}, {
       credentials: "include",
@@ -119,17 +145,32 @@ async function findConsumerOrgUuid() {
 // requests against a page that is already struggling.
 let fetchInFlight = false;
 let lastFetchCompletedAt = 0;
+let lastSuccessAt = 0;
+// Bumped whenever the session changes (logout). A fetch that was already in
+// flight when the user signed out would otherwise resolve afterwards and write
+// live usage numbers - and repaint the menu bar - for the account they just
+// left.
+let sessionEpoch = 0;
 
 async function fetchUsage() {
   if (fetchInFlight) return null;
   fetchInFlight = true;
+  const epoch = sessionEpoch;
   try {
     const orgUuid = await findConsumerOrgUuid();
     const data = await claudeApiFetch(`https://claude.ai/api/organizations/${orgUuid}/usage`);
 
-    const fiveHour = data.five_hour || {};
-    const sevenDay = data.seven_day || {};
-    const extra = data.extra_usage || {};
+    const fiveHour = (data && data.five_hour) || {};
+    const sevenDay = (data && data.seven_day) || {};
+    const extra = (data && data.extra_usage) || {};
+
+    // If the payload no longer carries the numbers, say so. Reporting ok:true
+    // with null percentages renders a confident, perfectly-fresh-looking
+    // widget full of "--" and no error - the exact silent failure this app has
+    // been bitten by twice.
+    if (typeof fiveHour.utilization !== "number" || typeof sevenDay.utilization !== "number") {
+      throw new Error("unexpected_response_shape");
+    }
 
     // `limits` grades each limit and flags which one is currently binding.
     // Knowing that weekly (not the 5-hour) is what will actually stop you is
@@ -190,6 +231,8 @@ async function fetchUsage() {
     // Remember that this machine has successfully authenticated at least once.
     // Startup uses this to go straight to the widget instead of flashing the
     // claude.ai login window at someone who is already signed in.
+    if (epoch !== sessionEpoch) return null; // signed out while this was in flight
+    lastSuccessAt = stats.fetchedAt;
     setStoreValues({ claudeUsageStats: stats, hasAuthedBefore: true });
     updateTrayTitle(stats);
     return stats;
@@ -197,8 +240,14 @@ async function fetchUsage() {
     const stats = {
       ok: false,
       fetchedAt: Date.now(),
-      error: String(err && err.message ? err.message : err)
+      // The renderer needs to distinguish "your session expired" from "the
+      // network is down" from "you signed out" - they need different actions.
+      error: String(err && err.message ? err.message : err),
+      // So the widget can say how old the numbers on screen actually are,
+      // rather than stamping a failure with "Updated just now".
+      lastSuccessAt: lastSuccessAt || null
     };
+    if (epoch !== sessionEpoch) return null;
     setStoreValues({ claudeUsageStats: stats });
     updateTrayTitle(stats);
     return stats;
@@ -273,8 +322,12 @@ function getSavedBounds() {
   // would fit. The cells flex now, so undo that widening once - otherwise
   // anyone who ran 1.4.0 is stuck with a window they never asked for. The
   // flag makes this a one-time correction, not a permanent width cap.
-  if (!store.widthRevert140 && b.width >= 430) {
-    b.width = DEFAULT_WINDOW_WIDTH;
+  if (!store.widthRevert140) {
+    // Mark the migration done whether or not it fired. Setting the flag only
+    // when it fires leaves it armed forever on a fresh install, so someone who
+    // later widens the window past 430px on purpose gets it yanked back to 340
+    // on the next launch.
+    if (b.width >= 430) b.width = DEFAULT_WINDOW_WIDTH;
     store.widthRevert140 = true;
     store.windowBounds = b;
     saveStore(store);
@@ -293,6 +346,27 @@ function saveBoundsDebounced() {
     store.windowBounds = b;
     saveStore(store);
   }, 400);
+}
+
+// The widget window carries the preload bridge, so anything loaded into it can
+// read and write the whole store, open external URLs and quit the app. It only
+// ever needs widget.html from disk, so pin it there: no navigation, no popups.
+//
+// Deliberately NOT applied to the claude.ai window. That one has no preload,
+// and blocking its navigation would break third-party SSO sign-in (Google,
+// Apple), which redirects off claude.ai by design. The protection there is the
+// origin check in claudeApiFetch, which is what actually matters: the app will
+// not run its script in, or trust JSON from, a page that is not claude.ai.
+function lockDownWidgetWindow(wc) {
+  const denyNavigation = (e, url) => {
+    if (!url.startsWith("file://")) e.preventDefault();
+  };
+  wc.on("will-navigate", denyNavigation);
+  wc.on("will-redirect", denyNavigation);
+  wc.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
 }
 
 function iconPath() {
@@ -322,11 +396,16 @@ function createMainWindow() {
     icon: iconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      partition: PARTITION,
+      partition: WIDGET_PARTITION,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Explicit rather than relying on the default, so a later edit cannot
+      // silently regress it.
+      sandbox: true
     }
   });
+
+  lockDownWidgetWindow(mainWindow.webContents);
 
   // NOTE: `visibleOnFullScreen: true` is deliberately NOT set here. On macOS a
   // window can only float above *other* apps' fullscreen spaces if the app
@@ -392,6 +471,23 @@ function getOrCreateAuthWindow(show) {
 
   authWindow.webContents.on("did-navigate", scheduleLoginCheck);
   authWindow.webContents.on("did-navigate-in-page", scheduleLoginCheck);
+
+  // Without this, launching while the network is still coming up leaves the
+  // window parked on chrome-error:// forever. Every later fetch then runs from
+  // an error-page origin and fails, and the watchdog cannot tell - it sees a
+  // healthy cadence of failures. Same for a renderer crash.
+  const reloadClaude = () => {
+    if (!authWindow || authWindow.isDestroyed()) return;
+    setTimeout(() => {
+      if (authWindow && !authWindow.isDestroyed()) {
+        authWindow.loadURL("https://claude.ai/login");
+      }
+    }, 5000);
+  };
+  authWindow.webContents.on("did-fail-load", (_e, code, _desc, _url, isMainFrame) => {
+    if (isMainFrame && code !== -3) reloadClaude(); // -3 = user-aborted
+  });
+  authWindow.webContents.on("render-process-gone", reloadClaude);
   authWindow.on("closed", () => {
     authWindow = null;
     if (loginCheckRetryTimer) clearTimeout(loginCheckRetryTimer);
@@ -417,7 +513,17 @@ async function checkLoggedInFromAuthWindow() {
   // here returned before reaching startPolling() and the app never polled at
   // all for anyone who had logged in before. It only ever refreshed when the
   // user pressed the button. Guard on the thing you actually mean.
-  if (pollTimer) return;
+  // Polling running means we are already signed in and set up. One exception:
+  // if the user opened the login window by hand it is still on screen, so hide
+  // it before bailing out - otherwise a full claude.ai browser window stays
+  // parked on their desktop with no way to dismiss it except closing it, which
+  // breaks fetching entirely.
+  if (pollTimer) {
+    if (authWindow.isVisible() && !/\/login/.test(authWindow.webContents.getURL())) {
+      authWindow.hide();
+    }
+    return;
+  }
   const url = authWindow.webContents.getURL();
   if (/\/login/.test(url)) return; // still sitting on the login page itself
 
@@ -426,7 +532,11 @@ async function checkLoggedInFromAuthWindow() {
     if (Array.isArray(orgs) && orgs.length > 0) {
       authWindow.hide();
       startPolling();
-      if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+      // Unconditional: createMainWindow already shows and focuses an existing
+      // window. Guarding on "no window exists" meant that after Log out (which
+      // hides rather than destroys) a successful re-login left BOTH windows
+      // hidden, with no sign anything had happened.
+      createMainWindow();
     }
   } catch (e) {
     // Not logged in yet (or a transient hiccup) - the next navigation event
@@ -462,6 +572,7 @@ function startPollWatchdog() {
 }
 
 function stopPolling() {
+  sessionEpoch += 1;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
 }
@@ -703,7 +814,11 @@ function refreshTrayMenu() {
         stopPolling();
         await session.fromPartition(PARTITION).clearStorageData({ storages: ["cookies"] });
         setStoreValues({
-          claudeUsageStats: { ok: false, fetchedAt: Date.now(), error: "logged_out" }
+          claudeUsageStats: { ok: false, fetchedAt: Date.now(), error: "logged_out" },
+          // Leaving this true meant the next launch showed the widget and so
+          // never surfaced the login window, stranding the user on a dead
+          // widget with no way in.
+          hasAuthedBefore: false
         });
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
         if (authWindow && !authWindow.isDestroyed()) {
@@ -727,7 +842,18 @@ function refreshTrayMenu() {
 // IPC (the preload shim's chrome.storage / chrome.runtime.sendMessage)
 // -----------------------------------------------------------------------
 
+// Only the widget window may drive these. Cheap insurance: if anything else
+// ever ends up in a webContents carrying the preload, it gets nothing.
+function fromWidget(event) {
+  return (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    event.sender === mainWindow.webContents
+  );
+}
+
 ipcMain.handle("storage-get", (event, keys) => {
+  if (!fromWidget(event)) return {};
   const store = loadStore();
   if (typeof keys === "string") return { [keys]: store[keys] };
   if (Array.isArray(keys)) {
@@ -739,11 +865,13 @@ ipcMain.handle("storage-get", (event, keys) => {
 });
 
 ipcMain.handle("storage-set", (event, obj) => {
+  if (!fromWidget(event)) return false;
   setStoreValues(obj);
   return true;
 });
 
 ipcMain.handle("runtime-message", async (event, msg) => {
+  if (!fromWidget(event)) return {};
   if (!msg) return {};
   if (msg.type === "refresh-now") {
     const stats = await fetchUsage();
@@ -758,14 +886,18 @@ ipcMain.handle("runtime-message", async (event, msg) => {
     return {};
   }
   if (msg.type === "resize-window") {
-    if (mainWindow && !mainWindow.isDestroyed() && typeof msg.width === "number") {
+    if (mainWindow && !mainWindow.isDestroyed() && Number.isFinite(msg.width)) {
       const b = mainWindow.getBounds();
       mainWindow.setBounds({
         x: b.x,
         y: b.y,
         width: Math.max(MIN_WINDOW_WIDTH, Math.round(msg.width)),
-        height: typeof msg.height === "number" ? Math.round(msg.height) : b.height
+        height: Number.isFinite(msg.height) ? Math.round(msg.height) : b.height
       });
+      // "resized" only fires at the end of a USER drag, so without this the
+      // compact toggle's new size is never written and the view silently
+      // reverts on restart.
+      saveBoundsDebounced();
     }
     return {};
   }
@@ -846,6 +978,19 @@ function offerMoveToApplications() {
   }
 }
 
+// Two copies share one userData directory, so both read-modify-write
+// store.json every 60s and whichever writes last silently discards the other's
+// heatmap sample or window bounds. They also each add a tray icon and a menu
+// bar string. offerMoveToApplications already knows two copies can coexist -
+// this makes sure they don't.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    createMainWindow();
+  });
+}
+
 app.whenReady().then(async () => {
   offerMoveToApplications();
 
@@ -923,12 +1068,25 @@ app.whenReady().then(async () => {
   // Quiet background update checks: once shortly after launch (not instantly,
   // so it never competes with the login flow), then every six hours for
   // machines that stay up for days.
+  // claude.ai needs none of these, and denying them means a page loaded into
+  // the session partition cannot prompt the user with THIS app's name on the
+  // dialog - which is a materially more trustworthy-looking prompt than a
+  // browser's.
+  const claudeSession = session.fromPartition(PARTITION);
+  claudeSession.setPermissionRequestHandler((_wc, _perm, done) => done(false));
+  claudeSession.setPermissionCheckHandler(() => false);
+
   startPollWatchdog();
   if (AUTO_UPDATE_SUPPORTED) {
     setTimeout(() => checkForUpdates(false), 15 * 1000);
     setInterval(() => checkForUpdates(false), 6 * 60 * 60 * 1000);
   }
 });
+
+// Clicking the Dock icon of an app with no visible windows fires "activate".
+// Without a handler nothing happens, and the tray is the only way back in -
+// which nobody guesses.
+app.on("activate", () => createMainWindow());
 
 app.on("window-all-closed", () => {
   // Stay resident in the tray - do not quit when the widget window closes.
