@@ -169,6 +169,16 @@ hook covers the case that matters: opening the widget is when you care whether
 it is current. Throttled to once per 10 minutes, because a single tray click
 fires both `show` and `focus`.
 
+**Pin your CI tools, and expect the pin to surface a version conflict.**
+The workflow called `npx wrangler`, which downloads whatever npm serves at that
+moment - on a runner that also holds the Developer ID certificate. Adding
+wrangler to devDependencies fixed the supply-chain exposure and immediately
+broke the build: the pinned version requires Node >= 22 and the workflow asked
+for Node 20. That mismatch had been there the whole time, hidden by `npx`
+happening to resolve an older release. `setup-node` is now on 22. This is what
+pinning is FOR - the conflict was always real, it just used to fail silently
+whenever npm's resolution drifted.
+
 **Never use `actions/upload-artifact` just to move files between jobs.** The
 first version of this workflow built on macOS and Windows runners, uploaded
 ~300MB of output as artifacts, then downloaded it all again in a third job that
