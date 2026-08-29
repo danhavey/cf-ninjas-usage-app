@@ -116,6 +116,18 @@ updater always concludes it is current - derive it from the git tag. Upload the
 zips *before* `latest-mac.yml`, and serve the manifest with `cache-control:
 no-cache`. Auto-update requires a signed build; it cannot work unsigned.
 
+**A tray icon can carry live text on macOS - `tray.setTitle()`.** For a status
+widget this is the highest-value surface in the app: the numbers are readable
+without opening anything, in every space and over fullscreen apps. Pass
+`{ fontType: "monospacedDigit" }` or the menu bar shifts sideways every time a
+digit changes width, which is very visible on a per-minute poll. `setTitle` is
+macOS-only - on Windows the tooltip is the only place text can go, so set both.
+
+Blank the title on a failed fetch rather than leaving the last good numbers:
+in a menu bar there is no timestamp beside them, so a stale percentage and a
+current one look identical. Offer an opt-out too; not everyone has room in
+their menu bar.
+
 **Update cadence: 15s after launch, on window show/focus, then every 6h.**
 The background interval alone is too slow to notice a release you just pushed -
 and worse, a check that fires during the ~10 minutes CI spends building and

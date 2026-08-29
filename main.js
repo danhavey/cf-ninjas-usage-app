@@ -191,6 +191,7 @@ async function fetchUsage() {
     // Startup uses this to go straight to the widget instead of flashing the
     // claude.ai login window at someone who is already signed in.
     setStoreValues({ claudeUsageStats: stats, hasAuthedBefore: true });
+    updateTrayTitle(stats);
     return stats;
   } catch (err) {
     const stats = {
@@ -199,6 +200,7 @@ async function fetchUsage() {
       error: String(err && err.message ? err.message : err)
     };
     setStoreValues({ claudeUsageStats: stats });
+    updateTrayTitle(stats);
     return stats;
   } finally {
     fetchInFlight = false;
@@ -603,9 +605,49 @@ function createTray() {
   tray = new Tray(img);
   tray.setToolTip("CF Ninjas AI - Claude Usage");
   refreshTrayMenu();
+  // Paint the last known numbers immediately so the menu bar is populated
+  // before the first poll comes back.
+  updateTrayTitle(loadStore().claudeUsageStats);
   tray.on("click", () => {
     createMainWindow();
   });
+}
+
+// macOS lets a tray icon carry live text beside it, which is the whole point
+// of a usage widget: the two numbers that matter are readable without opening
+// anything. `monospacedDigit` stops the menu bar shuffling sideways every time
+// a digit changes width - without it the text jitters on every poll.
+//
+// setTitle is macOS-only. On Windows the tooltip carries the same information,
+// since there is nowhere in the taskbar to put text.
+function updateTrayTitle(stats) {
+  if (!tray || tray.isDestroyed()) return;
+  // Opt-out, default on. Some people keep a crowded menu bar.
+  if (loadStore().showTrayPercents === false) {
+    if (process.platform === "darwin") tray.setTitle("");
+    tray.setToolTip("CF Ninjas AI - Claude Usage");
+    return;
+  }
+
+  const ok = stats && stats.ok;
+  const fh = ok && stats.fiveHour ? stats.fiveHour.percent : null;
+  const wk = ok && stats.weekly ? stats.weekly.percent : null;
+
+  if (fh == null || wk == null) {
+    // Deliberately blank rather than showing the last good numbers: a stale
+    // percentage in the menu bar is indistinguishable from a current one.
+    if (process.platform === "darwin") tray.setTitle("");
+    tray.setToolTip(
+      ok ? "CF Ninjas AI - Claude Usage" : "CF Ninjas AI - could not reach claude.ai"
+    );
+    return;
+  }
+
+  const label = `${Math.round(fh)}% / ${Math.round(wk)}%`;
+  if (process.platform === "darwin") {
+    tray.setTitle(` ${label}`, { fontType: "monospacedDigit" });
+  }
+  tray.setToolTip(`Claude usage - 5-hour ${Math.round(fh)}%, 7-day ${Math.round(wk)}%`);
 }
 
 function refreshTrayMenu() {
@@ -621,6 +663,19 @@ function refreshTrayMenu() {
         checked: (loadStore().theme || "dark") === mode,
         click: () => setTheme(mode)
       }))
+    },
+    {
+      label: "Show percentages in menu bar",
+      type: "checkbox",
+      visible: process.platform === "darwin",
+      checked: loadStore().showTrayPercents !== false,
+      click: (item) => {
+        const store = loadStore();
+        store.showTrayPercents = item.checked;
+        saveStore(store);
+        updateTrayTitle(loadStore().claudeUsageStats);
+        refreshTrayMenu();
+      }
     },
     { type: "separator" },
     { label: "Check for Updates…", click: () => checkForUpdates(true) },
