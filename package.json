@@ -12,7 +12,8 @@
   },
   "devDependencies": {
     "electron": "^43.0.0",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.0.0",
+    "wrangler": "^4.127.1"
   },
   "build": {
     "appId": "ai.cfninjas.claudeusagewidget",
