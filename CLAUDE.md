@@ -159,6 +159,17 @@ uploads is the fix that works now.
 trips SmartScreen harder than a zip). Windows code signing is a separate paid
 certificate.
 
+Because of that, a Windows "Check for Updates" button would always fail: the
+release workflow publishes `latest-mac.yml` and no `latest.yml`, so the check
+404s and pops an error dialog. Worse than no button. `AUTO_UPDATE_SUPPORTED`
+gates it - Windows gets "Get the Latest Version…" which opens the download
+page, and the background checks are skipped entirely rather than erroring into
+the console every six hours.
+
+Do not confuse this with the **usage poll**, which is plain `setInterval` +
+`fetch` and behaves identically on every platform. "No auto-update on Windows"
+means app versions, not data.
+
 **Cross-building.** Both Mac and Windows targets can be built from Linux, but
 Windows resource embedding needs `wine` plus `wine32:i386` (enable i386
 multiarch first). Signing and notarizing still require macOS, hence the

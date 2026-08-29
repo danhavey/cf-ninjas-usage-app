@@ -545,7 +545,20 @@ function getAutoUpdater() {
 // `interactive` is true when the user picked "Check for Updates…" themselves,
 // in which case silence would look broken - so we report "you're up to date"
 // and surface errors. Background checks stay quiet.
+// electron-updater cannot update the Windows build here: it needs NSIS (or
+// Squirrel.Windows), and this ships a plain .zip. The update feed is also
+// mac-only - the workflow publishes latest-mac.yml and no latest.yml - so a
+// Windows check would 404 and pop an error. Rather than leave a button that
+// always fails, Windows gets an honest one that opens the download page.
+const AUTO_UPDATE_SUPPORTED = process.platform === "darwin";
+const DOWNLOAD_PAGE = "https://usage.cfninjas.com";
+
 function checkForUpdates(interactive) {
+  if (!AUTO_UPDATE_SUPPORTED) {
+    if (interactive) shell.openExternal(DOWNLOAD_PAGE);
+    return;
+  }
+
   const updater = getAutoUpdater();
 
   if (!updater || !app.isPackaged) {
@@ -678,7 +691,10 @@ function refreshTrayMenu() {
       }
     },
     { type: "separator" },
-    { label: "Check for Updates…", click: () => checkForUpdates(true) },
+    {
+      label: AUTO_UPDATE_SUPPORTED ? "Check for Updates…" : "Get the Latest Version…",
+      click: () => checkForUpdates(true)
+    },
     { type: "separator" },
     { label: "Log in to claude.ai…", click: () => getOrCreateAuthWindow(true) },
     {
@@ -908,8 +924,10 @@ app.whenReady().then(async () => {
   // so it never competes with the login flow), then every six hours for
   // machines that stay up for days.
   startPollWatchdog();
-  setTimeout(() => checkForUpdates(false), 15 * 1000);
-  setInterval(() => checkForUpdates(false), 6 * 60 * 60 * 1000);
+  if (AUTO_UPDATE_SUPPORTED) {
+    setTimeout(() => checkForUpdates(false), 15 * 1000);
+    setInterval(() => checkForUpdates(false), 6 * 60 * 60 * 1000);
+  }
 });
 
 app.on("window-all-closed", () => {
