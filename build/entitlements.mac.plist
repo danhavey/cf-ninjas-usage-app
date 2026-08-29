@@ -2,15 +2,36 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- Required by V8. Electron will not start without these two. -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-  <true/>
-  <key>com.apple.security.cs.disable-library-validation</key>
-  <true/>
+
+  <!-- Needed to reach claude.ai and the update feed. -->
   <key>com.apple.security.network.client</key>
   <true/>
+
+  <!--
+    DELIBERATELY ABSENT - do not add back without a reason you can name:
+
+      com.apple.security.cs.disable-library-validation
+        Lets the process load libraries NOT signed by this Team ID. Only
+        needed when an app ships an unsigned native module. This app bundles
+        no native code (electron-updater and its dependencies are pure JS;
+        the .node files under node_modules are devDependencies used at build
+        time and never packaged). With it on, anyone with local write access
+        can inject a dylib into a signed bundle that holds a live claude.ai
+        session - which is precisely what hardened runtime exists to prevent.
+
+      com.apple.security.cs.allow-dyld-environment-variables
+        Lets DYLD_INSERT_LIBRARIES and friends take effect, which is the
+        classic way to load that dylib in the first place. Nothing here needs
+        it.
+
+    electron-builder includes both by default because some apps genuinely do
+    ship unsigned native modules. This one does not, so carrying them is pure
+    downside.
+  -->
 </dict>
 </plist>

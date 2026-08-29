@@ -80,12 +80,16 @@ Deliberate choices, so a later change does not undo them by accident:
 - **IPC handlers verify `event.sender`** is the widget's webContents.
 - **No credential is ever written to `store.json`** - only usage numbers,
   heatmap data and UI preferences. Keep it that way.
-- Still open, needs a build to verify: `build/entitlements.mac.plist` carries
-  electron-builder's default `disable-library-validation` and
-  `allow-dyld-environment-variables`. Stock Electron does not need either, and
-  together they let a local attacker inject an unsigned dylib into the signed
-  bundle that holds the claude.ai session. Removing them is likely safe but
-  must be tested end to end (build, notarize, launch) before shipping.
+- **Entitlements are the minimum set**: `allow-jit` and
+  `allow-unsigned-executable-memory` (V8 will not start without them) plus
+  `network.client`. electron-builder's default template also includes
+  `disable-library-validation` and `allow-dyld-environment-variables`; both were
+  removed. They exist for apps that ship unsigned native modules - this one
+  ships none - and together they undo most of what hardened runtime buys you,
+  letting a local attacker inject a dylib into a signed bundle holding a live
+  claude.ai session. If a future dependency adds a native module and the app
+  refuses to launch, that is when to reconsider, and the fix is to sign the
+  module rather than to disable validation.
 
 ## Gotchas (each of these cost real debugging time)
 
