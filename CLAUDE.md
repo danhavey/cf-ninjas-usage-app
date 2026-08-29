@@ -256,6 +256,16 @@ hidden with no sign anything had happened; and a manually opened login window
 was never hidden again once polling was running. Same root cause as the bug
 below, in the same function, found six weeks apart.
 
+**Audit the first thirty seconds separately.** Three bugs survived every
+earlier pass because they only appear on a machine with no stored state, and
+the developer's machine never has none: the tray theme radio defaulted to Dark
+while the widget followed the OS (so a fresh install on a light-mode Mac
+disagreed with itself), the tray tooltip said "could not reach claude.ai"
+before the user had ever signed in, and Refresh returned `null` during an
+in-flight poll so the spinner died with nothing changed. For anything shipped
+to strangers, delete the store file and walk through first launch deliberately -
+it is a different code path and it is the only one some users will ever see.
+
 **A failure timestamp is not an update timestamp.** `fetchedAt` is set on the
 error path too, so a failed poll rendered "Updated just now" beside rings still
 showing the last good numbers. The tray already blanked itself for exactly this

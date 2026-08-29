@@ -3,7 +3,7 @@
 // claude.ai's own usage endpoints - the same ones its Settings > Usage page
 // calls - using a session you log into once, right here in this app.
 
-const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, dialog, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, nativeTheme, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -143,6 +143,9 @@ async function findConsumerOrgUuid() {
 
 // Guards against a slow fetch overlapping the next poll tick and stacking up
 // requests against a page that is already struggling.
+// Holds the promise for the fetch currently running, so a manual Refresh can
+// wait on it instead of being told "no" and leaving the button looking inert.
+let inFlightFetch = null;
 let fetchInFlight = false;
 let lastFetchCompletedAt = 0;
 let lastSuccessAt = 0;
@@ -152,7 +155,18 @@ let lastSuccessAt = 0;
 // left.
 let sessionEpoch = 0;
 
-async function fetchUsage() {
+function fetchUsage() {
+  // A poll can take up to 20s. Pressing Refresh during one used to return null
+  // immediately, so the spinner stopped and nothing changed - the app looked
+  // broken while working correctly. Hand back the running promise instead.
+  if (fetchInFlight && inFlightFetch) return inFlightFetch;
+  inFlightFetch = runFetchUsage().finally(() => {
+    inFlightFetch = null;
+  });
+  return inFlightFetch;
+}
+
+async function runFetchUsage() {
   if (fetchInFlight) return null;
   fetchInFlight = true;
   const epoch = sessionEpoch;
@@ -596,6 +610,7 @@ function stopPolling() {
 
 let autoUpdater = null;
 let updateCheckInFlight = false;
+let updateStuckTimer = null;
 let lastUpdateCheckAt = 0;
 
 // Opening the widget is the moment you are most likely to care whether it is
@@ -629,6 +644,7 @@ function getAutoUpdater() {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-downloaded", async (info) => {
+    clearTimeout(updateStuckTimer);
     updateCheckInFlight = false;
     const { response } = await dialog.showMessageBox({
       type: "info",
@@ -646,6 +662,7 @@ function getAutoUpdater() {
   });
 
   autoUpdater.on("error", (err) => {
+    clearTimeout(updateStuckTimer);
     updateCheckInFlight = false;
     console.error("[updater]", err && err.message ? err.message : err);
   });
@@ -686,6 +703,13 @@ function checkForUpdates(interactive) {
   if (updateCheckInFlight) return;
   updateCheckInFlight = true;
   lastUpdateCheckAt = Date.now();
+  // If a download stalls without ever firing update-downloaded or error, this
+  // flag would otherwise stay true for the life of the process and no further
+  // check would run until the app restarted. Updates would silently stop.
+  clearTimeout(updateStuckTimer);
+  updateStuckTimer = setTimeout(() => {
+    updateCheckInFlight = false;
+  }, 30 * 60 * 1000);
 
   updater
     .checkForUpdates()
@@ -693,6 +717,7 @@ function checkForUpdates(interactive) {
       const available =
         result && result.updateInfo && result.updateInfo.version !== app.getVersion();
       if (!available) {
+        clearTimeout(updateStuckTimer);
         updateCheckInFlight = false;
         if (interactive) {
           dialog.showMessageBox({
@@ -706,6 +731,7 @@ function checkForUpdates(interactive) {
       // "update-downloaded" handler above takes it from here.
     })
     .catch((err) => {
+      clearTimeout(updateStuckTimer);
       updateCheckInFlight = false;
       if (interactive) {
         dialog.showMessageBox({
@@ -719,6 +745,12 @@ function checkForUpdates(interactive) {
 
 // Theme moved out of the widget's title bar and into the tray, so the header
 // can be just the window controls and the centred app name.
+// Matches initTheme() in widget.js, which applies the OS preference when
+// nothing is stored.
+function systemTheme() {
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
 function setTheme(mode) {
   setStoreValues({ theme: mode });
   refreshTrayMenu();
@@ -761,9 +793,14 @@ function updateTrayTitle(stats) {
     // Deliberately blank rather than showing the last good numbers: a stale
     // percentage in the menu bar is indistinguishable from a current one.
     if (process.platform === "darwin") tray.setTitle("");
-    tray.setToolTip(
-      ok ? "CF Ninjas AI - Claude Usage" : "CF Ninjas AI - could not reach claude.ai"
-    );
+    // Before the first successful login there is nothing wrong with
+    // claude.ai - the user simply has not signed in. Saying otherwise is the
+    // first thing a new user hovers, and it points them at the wrong problem.
+    let tip;
+    if (ok) tip = "CF Ninjas AI - Claude Usage";
+    else if (!loadStore().hasAuthedBefore) tip = "CF Ninjas AI - not signed in yet";
+    else tip = "CF Ninjas AI - could not reach claude.ai";
+    tray.setToolTip(tip);
     return;
   }
 
@@ -784,7 +821,11 @@ function refreshTrayMenu() {
       submenu: ["dark", "light"].map((mode) => ({
         label: mode === "dark" ? "Dark" : "Light",
         type: "radio",
-        checked: (loadStore().theme || "dark") === mode,
+        // With no stored preference the widget follows the OS, so the tray has
+        // to as well. Defaulting to "dark" here meant a fresh install on a
+        // light-mode Mac showed a light widget with Dark ticked - the app
+        // disagreeing with itself on first launch.
+        checked: (loadStore().theme || systemTheme()) === mode,
         click: () => setTheme(mode)
       }))
     },
