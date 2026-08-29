@@ -347,78 +347,114 @@ function hourTick(h) {
   return (h - 12) + "p";
 }
 
-// Week view rows are seven *actual* dates, so the tooltip can name the day.
-// Month view can't be - 30 rows won't fit - so it folds onto weekday rows and
-// reports the peak for that weekday/hour instead, which the tooltip says out
-// loud rather than implying a single date.
-function activityRows() {
-  var rows = [];
+// Peak usage for one calendar day, across every hour we sampled.
+function dayPeak(data, key) {
+  var d = data[key];
+  if (!d) return null;
+  var peak = null;
+  for (var h in d) {
+    var v = d[h];
+    if (typeof v !== "number") continue;
+    if (peak === null || v > peak) peak = v;
+  }
+  return peak;
+}
+
+function fmtDayLong(d) {
+  return DAY_LABELS[d.getDay()] + " " + MONTH_LABELS[d.getMonth()] + " " + d.getDate();
+}
+
+// --- Week: hours across, days down ------------------------------------
+// Seven actual dates, so the tooltip can name the day and hour.
+function renderWeek(data, $grid) {
   var today = new Date();
-  if (activityRange === "week") {
-    for (var i = 6; i >= 0; i--) {
-      var d = new Date(today);
-      d.setDate(d.getDate() - i);
-      d.setHours(0, 0, 0, 0);
-      rows.push({ label: DAY_LABELS[d.getDay()], date: d, keys: [localDateKey(d)] });
-    }
-  } else {
-    for (var w = 0; w < 7; w++) rows.push({ label: DAY_LABELS[w], date: null, keys: [] });
-    for (var j = 0; j < 30; j++) {
-      var dd = new Date(today);
-      dd.setDate(dd.getDate() - j);
-      rows[dd.getDay()].keys.push(localDateKey(dd));
+  var any = false;
+
+  $grid.append('<div class="activity-hourlabel"></div>');
+  for (var h = 0; h < 24; h++) {
+    $grid.append('<div class="activity-hourlabel">' + hourTick(h) + "</div>");
+  }
+
+  for (var i = 6; i >= 0; i--) {
+    var d = new Date(today);
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    var key = localDateKey(d);
+    $grid.append('<div class="activity-daylabel">' + DAY_LABELS[d.getDay()] + "</div>");
+
+    for (var hh = 0; hh < 24; hh++) {
+      var dayData = data[key];
+      var peak = dayData && typeof dayData[hh] === "number" ? dayData[hh] : null;
+      if (peak !== null) any = true;
+
+      $grid.append(
+        $('<div class="activity-cell"></div>')
+          .attr("data-tip", fmtDayLong(d) + " " + fmtHour(hh) + " · " +
+                            (peak === null ? "no data" : peak + "%"))
+          .css("background", "var(--heatmap-" + heatmapLevel(peak) + ")")
+      );
     }
   }
-  return rows;
+  return any;
+}
+
+// --- Month: a real calendar, one square per day -----------------------
+// Folding 30 days onto seven weekday rows - what this used to do - produced a
+// grid indistinguishable from the week view: same seven labels, and with less
+// than a week of data literally the same squares. A toggle whose output looks
+// identical reads as broken. Days across and weeks down answers a different
+// question ("which DAYS were heavy?") and always looks different.
+function renderMonth(data, $grid) {
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var any = false;
+
+  for (var w = 0; w < 7; w++) {
+    $grid.append('<div class="month-daylabel">' + DAY_LABELS[w] + "</div>");
+  }
+
+  // Five whole weeks ending with the week containing today, so the columns
+  // line up under their weekday labels the way a wall calendar does.
+  var start = new Date(today);
+  start.setDate(start.getDate() - (28 + today.getDay()));
+
+  for (var i = 0; i < 35; i++) {
+    var d = new Date(start);
+    d.setDate(d.getDate() + i);
+
+    if (d > today) {
+      // Later this week. Not "no usage" - hasn't happened yet.
+      $grid.append('<div class="month-cell is-future"></div>');
+      continue;
+    }
+
+    var peak = dayPeak(data, localDateKey(d));
+    if (peak !== null) any = true;
+
+    $grid.append(
+      $('<div class="month-cell"></div>')
+        .attr("data-level", heatmapLevel(peak))
+        .attr("data-tip", fmtDayLong(d) + " · " +
+                          (peak === null ? "no data" : "peak " + peak + "%"))
+        .css("background", "var(--heatmap-" + heatmapLevel(peak) + ")")
+        .text(d.getDate())
+    );
+  }
+  return any;
 }
 
 function renderActivity(activity) {
   var data = activity || {};
-  var rows = activityRows();
   var $grid = $("#activityGrid");
-  var any = false;
+  var month = activityRange === "month";
 
   // The grid is rebuilt wholesale every time new data arrives. jQuery removing
   // the hovered cell does not fire mouseleave, and the tooltip lives outside
   // the grid, so without this it freezes on screen showing a stale reading.
   $("#heatmapTooltip").addClass("hidden");
 
-  $grid.empty();
-  $grid.append('<div class="activity-hourlabel"></div>');
-  for (var h = 0; h < 24; h++) {
-    $grid.append('<div class="activity-hourlabel">' + hourTick(h) + "</div>");
-  }
-
-  for (var r = 0; r < rows.length; r++) {
-    var row = rows[r];
-    $grid.append('<div class="activity-daylabel">' + row.label + "</div>");
-
-    for (var hh = 0; hh < 24; hh++) {
-      // Peak across the row's dates. `null` means we never sampled that hour,
-      // which is a different thing from having sampled it and seen 0%.
-      var peak = null;
-      for (var k = 0; k < row.keys.length; k++) {
-        var dayData = data[row.keys[k]];
-        if (!dayData) continue;
-        var v = dayData[hh];
-        if (typeof v !== "number") continue;
-        if (peak === null || v > peak) peak = v;
-      }
-      if (peak !== null) any = true;
-
-      var when = row.date
-        ? DAY_LABELS[row.date.getDay()] + " " + MONTH_LABELS[row.date.getMonth()] +
-          " " + row.date.getDate() + " " + fmtHour(hh)
-        : row.label + " " + fmtHour(hh) + " (30-day peak)";
-      var tip = when + " · " + (peak === null ? "no data" : peak + "%");
-
-      $grid.append(
-        $('<div class="activity-cell"></div>')
-          .attr("data-tip", tip)
-          .css("background", "var(--heatmap-" + heatmapLevel(peak) + ")")
-      );
-    }
-  }
+  $grid.empty().toggleClass("month-grid", month);
+  var any = month ? renderMonth(data, $grid) : renderWeek(data, $grid);
 
   $("#activityEmpty").toggleClass("hidden", any);
   $("#heatmapLegend").toggleClass("hidden", !any);
@@ -438,7 +474,7 @@ function loadActivityFromStorage() {
 // Tooltip. Positioned against #activity and clamped to it, so a cell in the
 // far-left or far-right hour column can't push the bubble off the widget.
 $(document)
-  .on("mouseenter", ".activity-cell", function () {
+  .on("mouseenter", ".activity-cell, .month-cell:not(.is-future)", function () {
     var $cell = $(this);
     var $tip = $("#heatmapTooltip");
     var $anchor = $("#activity");
@@ -458,7 +494,7 @@ $(document)
 
     $tip.css({ left: left + "px", top: top + "px" });
   })
-  .on("mouseleave", ".activity-cell", function () {
+  .on("mouseleave", ".activity-cell, .month-cell", function () {
     $("#heatmapTooltip").addClass("hidden");
   });
 

@@ -481,6 +481,55 @@ html, body {
   border-radius: 2px;
 }
 
+/* Month view: weekday columns, week rows - a wall calendar rather than the
+   week view's hours-across grid. Seven columns instead of 24 means the squares
+   can be big enough to carry the date number. */
+#activityGrid.month-grid {
+  grid-template-columns: repeat(7, 1fr);
+  max-width: 100%;
+  gap: 4px;
+}
+
+.month-daylabel {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-align: center;
+  padding-bottom: 2px;
+}
+
+.month-cell {
+  aspect-ratio: 1 / 1;
+  border-radius: 4px;
+  background: var(--heatmap-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+  -webkit-app-region: no-drag;
+  cursor: default;
+}
+
+/* The two brightest greens are light enough that dim grey text vanishes. */
+.month-cell[data-level="4"],
+.month-cell[data-level="5"] {
+  color: #0b2016;
+  font-weight: 600;
+}
+
+.month-cell:hover {
+  outline: 1px solid var(--text-dim);
+  outline-offset: -1px;
+}
+
+/* Days later this week: absent, not empty. No hover, no tooltip. */
+.month-cell.is-future {
+  background: transparent;
+  border: 1px dashed var(--border);
+  opacity: 0.4;
+}
+
 #activityEmpty {
   margin-top: 6px;
   font-size: 11px;
