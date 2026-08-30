@@ -459,6 +459,8 @@ function renderActivity(activity) {
   $("#activityEmpty").toggleClass("hidden", any);
   $("#heatmapLegend").toggleClass("hidden", !any);
   $grid.toggleClass("hidden", !any);
+
+  fitWindowHeight();
 }
 
 function loadActivityFromStorage() {
@@ -537,6 +539,42 @@ function paintResets() {
 // Resize fires continuously while dragging, so do the work only when the mode
 // actually flips.
 var lastCompactState = null;
+
+// The month calendar is much taller than the hourly week grid, so a fixed
+// window height means one of the two views always either scrolls or leaves
+// dead space. Measure what the content actually needs and ask for that.
+// Measured from #content's scrollHeight rather than the window, because
+// #content is the thing that scrolls - the window height tells you nothing
+// about how much is hidden inside it.
+var fitHandle = null;
+
+function fitWindowHeight() {
+  if (!window.__isElectron || isCompact()) return;
+  clearTimeout(fitHandle);
+  fitHandle = setTimeout(function () {
+    // #content is a stretching flex child, so its scrollHeight equals its
+    // clientHeight whenever the content is SHORTER than the window - which
+    // means measuring it directly can only ever grow the window, never shrink
+    // it back. Collapse it to its natural height for one measurement, then put
+    // it straight back.
+    var el = $("#content")[0];
+    var prevFlex = el.style.flex;
+    var prevHeight = el.style.height;
+    el.style.flex = "0 0 auto";
+    el.style.height = "auto";
+    var contentH = el.scrollHeight;
+    el.style.flex = prevFlex;
+    el.style.height = prevHeight;
+
+    var needed =
+      $("#titlebar").outerHeight(true) + contentH + $("#footer").outerHeight(true);
+    needed = Math.ceil(needed) + 2; // rounding headroom, or you get 1px of scroll
+    // Ignore trivial differences so this cannot ping-pong with the resize
+    // handler that called it.
+    if (Math.abs(needed - window.innerHeight) < 8) return;
+    chrome.runtime.sendMessage({ type: "resize-window", height: needed });
+  }, 60);
+}
 
 function applyCompact() {
   var compact = isCompact();

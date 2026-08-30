@@ -3,7 +3,7 @@
 // claude.ai's own usage endpoints - the same ones its Settings > Usage page
 // calls - using a session you log into once, right here in this app.
 
-const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, nativeTheme, dialog, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, session, ipcMain, nativeImage, nativeTheme, dialog, shell, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -927,13 +927,21 @@ ipcMain.handle("runtime-message", async (event, msg) => {
     return {};
   }
   if (msg.type === "resize-window") {
-    if (mainWindow && !mainWindow.isDestroyed() && Number.isFinite(msg.width)) {
+    const hasW = Number.isFinite(msg.width);
+    const hasH = Number.isFinite(msg.height);
+    if (mainWindow && !mainWindow.isDestroyed() && (hasW || hasH)) {
       const b = mainWindow.getBounds();
+      // Never taller than the screen the window is actually on - the month
+      // calendar is tall, and on a laptop "fit the content" could otherwise
+      // ask for a window that runs off the bottom.
+      const work = screen.getDisplayMatching(b).workAreaSize;
       mainWindow.setBounds({
         x: b.x,
         y: b.y,
-        width: Math.max(MIN_WINDOW_WIDTH, Math.round(msg.width)),
-        height: Number.isFinite(msg.height) ? Math.round(msg.height) : b.height
+        width: hasW ? Math.max(MIN_WINDOW_WIDTH, Math.round(msg.width)) : b.width,
+        height: hasH
+          ? Math.max(320, Math.min(Math.round(msg.height), work.height - 40))
+          : b.height
       });
       // "resized" only fires at the end of a USER drag, so without this the
       // compact toggle's new size is never written and the view silently
