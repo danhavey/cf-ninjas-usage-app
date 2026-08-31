@@ -5,10 +5,10 @@
   <!-- Nothing here is remote: jQuery is bundled, the only images are inline
        data: URIs, and the widget makes no network requests of its own (all
        data arrives over IPC). Locking that down caps the damage of any future
-       markup mistake. 'unsafe-inline' for scripts covers the chrome shim at
-       the bottom of this file. -->
+       markup mistake. No inline scripts - the chrome shim lives in boot.js so
+       this page also loads under MV3, which forbids them. -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'" />
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'" />
   <title>CF Ninjas AI</title>
   <link rel="stylesheet" href="widget.css" />
 </head>
@@ -150,15 +150,7 @@
     </footer>
   </div>
 
-  <script>
-    // Electron build only: preload.js can't expose anything named "chrome"
-    // directly (Chromium's renderer already defines one), so it hands us
-    // the real shim under a private name and we assign it here, in normal
-    // page-context JS, before widget.js runs. No-op in the Chrome
-    // extension, where window.chrome is already the real extension API and
-    // __cfninjas_chrome is simply never defined.
-    if (window.__cfninjas_chrome) { window.chrome = window.__cfninjas_chrome; }
-  </script>
+  <script src="boot.js"></script>
   <script src="jquery.min.js"></script>
   <script src="widget.js"></script>
 </body>

@@ -549,7 +549,7 @@ var lastCompactState = null;
 var fitHandle = null;
 
 function fitWindowHeight() {
-  if (!window.__isElectron || isCompact()) return;
+  if (!window.__canResizeWindow || isCompact()) return;
   clearTimeout(fitHandle);
   fitHandle = setTimeout(function () {
     // #content is a stretching flex child, so its scrollHeight equals its
@@ -572,7 +572,12 @@ function fitWindowHeight() {
     // Ignore trivial differences so this cannot ping-pong with the resize
     // handler that called it.
     if (Math.abs(needed - window.innerHeight) < 8) return;
-    chrome.runtime.sendMessage({ type: "resize-window", height: needed });
+    // Report an OUTER window height. The host sets window size, not content
+    // size, so the title bar and borders have to be added here - the renderer
+    // is the only side that can measure them. Zero in the frameless Electron
+    // window, non-zero for the extension's popup, and correct either way.
+    var chromeH = Math.max(0, window.outerHeight - window.innerHeight);
+    chrome.runtime.sendMessage({ type: "resize-window", height: needed + chromeH });
   }, 60);
 }
 
@@ -592,8 +597,8 @@ function applyCompact() {
 
 $("#compactBtn").on("click", function () {
   var goCompact = !isCompact();
-  if (!window.__isElectron) {
-    // No window to resize in the browser build - flip the class directly.
+  if (!window.__canResizeWindow) {
+    // Nothing can resize the window here - flip the class directly.
     $("body").toggleClass("compact", goCompact);
     return;
   }
@@ -606,6 +611,11 @@ $("#compactBtn").on("click", function () {
 });
 
 $(window).on("resize", applyCompact);
+
+// Compact mode is only offered where something can actually resize the window
+// for us - otherwise the button would restyle the page inside a window that
+// stayed the wrong size.
+if (window.__canResizeWindow) $("#compactBtn").removeClass("hidden");
 
 // ---------------------------------------------------------------------
 // Init
@@ -643,7 +653,6 @@ $(function () {
     // to the tray menu where the rest of the app-level actions already live.
     $("#windowControls").removeClass("hidden");
     $("#themeBtn").addClass("hidden");
-    $("#compactBtn").removeClass("hidden");
 
     $("#closeBtn").on("click", function () {
       chrome.runtime.sendMessage({ type: "quit-app" });
