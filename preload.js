@@ -31,13 +31,27 @@ ipcRenderer.on("storage-changed", (_event, key, newValue) => {
 contextBridge.exposeInMainWorld("__cfninjas_chrome", {
   storage: {
     local: {
+      // Every invoke gets a catch: an IPC handler that throws would otherwise
+      // leave the callback un-called forever, and the caller has no way to
+      // know. The visible symptom is the refresh button spinning for the rest
+      // of the session.
       get: (keys, cb) => {
-        ipcRenderer.invoke("storage-get", keys).then((result) => cb(result || {}));
+        ipcRenderer
+          .invoke("storage-get", keys)
+          .then((result) => cb(result || {}))
+          .catch((err) => {
+            console.error("storage-get failed:", err);
+            cb({});
+          });
       },
       set: (obj, cb) => {
-        ipcRenderer.invoke("storage-set", obj).then(() => {
-          if (cb) cb();
-        });
+        ipcRenderer
+          .invoke("storage-set", obj)
+          .then(() => { if (cb) cb(); })
+          .catch((err) => {
+            console.error("storage-set failed:", err);
+            if (cb) cb();
+          });
       }
     },
     onChanged: {
@@ -46,9 +60,13 @@ contextBridge.exposeInMainWorld("__cfninjas_chrome", {
   },
   runtime: {
     sendMessage: (msg, cb) => {
-      ipcRenderer.invoke("runtime-message", msg).then((resp) => {
-        if (cb) cb(resp || {});
-      });
+      ipcRenderer
+        .invoke("runtime-message", msg)
+        .then((resp) => { if (cb) cb(resp || {}); })
+        .catch((err) => {
+          console.error("runtime-message failed:", err);
+          if (cb) cb({});
+        });
     }
   },
   // widget.js calls these no-ops in the Electron build - polling is driven

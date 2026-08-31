@@ -32,7 +32,7 @@ signs and notarizes the Mac builds, and uploads everything to R2. The version in
 | `.github/workflows/release.yml` | Build, sign, notarize, publish |
 
 The download page Worker lives in a **separate** repo/folder
-(`claude-usage-worker`), deployed with `npx wrangler deploy`.
+(`cf-ninjas-download-worker`), deployed with `npx wrangler deploy`.
 
 ## Required GitHub secrets
 

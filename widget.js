@@ -158,11 +158,40 @@ function ringGlow(pct, alpha) {
 // something at 4?" - and it is stale the moment it is rendered, whereas
 // "Resets 8:27pm" stays true between polls.
 function fmtTimeOfDay(d) {
-  var s = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  // "8:27 PM" -> "8:27pm". 24-hour locales ("20:27") are left untouched.
-  return s.replace(/\s*([AP])\.?M\.?$/i, function (_m, ap) {
-    return ap.toLowerCase() + "m";
-  });
+  // Built from Intl parts rather than by regex-stripping "AM"/"PM" off the end
+  // of a formatted string, which only ever worked for English. es-ES produces
+  // "8:27 p. m." and zh-CN puts the period BEFORE the time; walking the parts
+  // keeps each locale's own order and wording, and only removes the spacing.
+  var parts;
+  try {
+    parts = new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit"
+    }).formatToParts(d);
+  } catch (e) {
+    return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  var out = "";
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i];
+    if (part.type === "dayPeriod") {
+      // "PM" -> "pm", "p. m." -> "p.m." with the spaces gone.
+      out += part.value.replace(/[\s\u00a0\u202f]/g, "").toLowerCase();
+    } else if (part.type === "literal" && !/\S/.test(part.value)) {
+      // Drop the separator space so the period sits tight against the time.
+    } else {
+      out += part.value;
+    }
+  }
+  return out;
+}
+
+// Whole calendar days between two dates, ignoring the time of day.
+function calendarDaysBetween(from, to) {
+  var a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  var b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((b - a) / 86400000);
 }
 
 function fmtResetsIn(iso) {
@@ -170,10 +199,18 @@ function fmtResetsIn(iso) {
   var d = new Date(iso);
   if (isNaN(d.getTime())) return "--";
   if (d.getTime() - Date.now() <= 0) return "resets soon";
-  // A 5-hour window can roll past midnight, and a bare "1:15am" would look
-  // like it already passed.
-  var prefix = d.toDateString() !== new Date().toDateString() ? "tomorrow " : "";
-  return "Resets " + prefix + fmtTimeOfDay(d);
+
+  // A 5-hour window normally lands today or tomorrow, and a bare "1:15am"
+  // would read as already past. Do not assume it can only be those two,
+  // though - if the window ever changes, "tomorrow" would be a confident lie.
+  var days = calendarDaysBetween(new Date(), d);
+  var when;
+  if (days <= 0) when = "";
+  else if (days === 1) when = "tomorrow ";
+  else if (days < 7) when = d.toLocaleDateString(undefined, { weekday: "short" }) + " ";
+  else when = d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " ";
+
+  return "Resets " + when + fmtTimeOfDay(d);
 }
 
 function fmtResetsDayTime(iso, shortDay) {

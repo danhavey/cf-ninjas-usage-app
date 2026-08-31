@@ -681,6 +681,33 @@ function getAutoUpdater() {
 const AUTO_UPDATE_SUPPORTED = process.platform === "darwin";
 const DOWNLOAD_PAGE = "https://usage.cfninjas.com";
 
+// electron-updater reports whatever the feed says. Comparing with !== treats
+// an OLDER remote version as "an update available", so a rolled-back feed - or
+// a locally built higher version - would prompt the user to downgrade, and
+// autoDownload would fetch it before anyone noticed.
+function isNewerVersion(remote, current) {
+  const parse = (v) => {
+    const [core, pre] = String(v || "").trim().replace(/^v/, "").split("-");
+    const nums = core.split(".").map((n) => parseInt(n, 10));
+    return { nums, pre: pre || "", ok: nums.length >= 2 && nums.every((n) => !isNaN(n)) };
+  };
+  const r = parse(remote);
+  const c = parse(current);
+  // Unparseable on either side: fall back to "different means newer" rather
+  // than silently refusing every future update.
+  if (!r.ok || !c.ok) return String(remote) !== String(current);
+
+  for (let i = 0; i < 3; i++) {
+    const a = r.nums[i] || 0;
+    const b = c.nums[i] || 0;
+    if (a !== b) return a > b;
+  }
+  // Same core version: a real release beats a prerelease of it.
+  if (r.pre && !c.pre) return false;
+  if (!r.pre && c.pre) return true;
+  return r.pre > c.pre;
+}
+
 function checkForUpdates(interactive) {
   if (!AUTO_UPDATE_SUPPORTED) {
     if (interactive) shell.openExternal(DOWNLOAD_PAGE);
@@ -715,7 +742,9 @@ function checkForUpdates(interactive) {
     .checkForUpdates()
     .then((result) => {
       const available =
-        result && result.updateInfo && result.updateInfo.version !== app.getVersion();
+        result &&
+        result.updateInfo &&
+        isNewerVersion(result.updateInfo.version, app.getVersion());
       if (!available) {
         clearTimeout(updateStuckTimer);
         updateCheckInFlight = false;
