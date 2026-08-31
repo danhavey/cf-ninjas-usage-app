@@ -18,7 +18,7 @@ Requires [Node.js](https://nodejs.org) - you already have this if `node -v`
 works in Terminal.
 
 ```bash
-cd cf-ninjas-usage-app
+cd claude-usage-app
 npm install
 npm run dist
 ```
