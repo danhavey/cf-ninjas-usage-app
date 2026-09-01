@@ -1,4 +1,4 @@
-# CF Ninjas AI Usage Widget - build & distribution notes
+# Claude Usage Monitor - build & distribution notes
 
 An Electron desktop widget, signed and notarized on macOS, distributed from
 Cloudflare R2 behind a Worker at `usage.cfninjas.com`, with auto-update.
