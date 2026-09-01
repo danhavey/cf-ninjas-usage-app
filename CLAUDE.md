@@ -9,6 +9,32 @@ re-reading before repeating any of it.
 
 ---
 
+## What exists, and where
+
+Names drift apart from what they deploy. Write the mapping down once.
+
+| Repo | Folder | Deploys / produces |
+|---|---|---|
+| `danhavey/claude-usage-app` (public) | `~/claude-projects/claude-usage-app` | The macOS + Windows desktop app. Tag `vX.Y.Z` to release |
+| `danhavey/claude-usage-worker` (private) | `~/claude-projects/claude-usage-worker` | Worker `cfninjas-usage-app-download` -> `usage.cfninjas.com` and the update feed. Deployed by hand with `npx wrangler deploy` |
+| `danhavey/usage-app-template` (private) | `~/claude-projects/usage-app-template` | Nothing. Starting point for the next desktop app |
+| `danhavey/usage-extension-template` (private) | `~/claude-projects/usage-extension-template` | Nothing. Chrome extension build, shares this repo's renderer verbatim |
+
+Other named things that are not repos:
+
+- **R2 bucket `cfninjas-usage-app-downloads`** - holds the installers and the
+  update feed. **Never delete this bucket.** It is not an asset host: it serves
+  executable code that auto-installs on users' machines. Anyone who can write
+  to it can ship those users code, which is why the CI token is scoped to
+  *Workers R2 Storage: Edit* and nothing else. Pruning old zips under
+  `updates/` is fine; keep the newest release and one previous.
+- **Worker hostname `cfninjas-usage-app-download.dan4277.workers.dev`** - the
+  update feed deliberately uses this rather than the custom domain, because
+  Bot Fight Mode on the zone challenges non-browser clients.
+
+
+---
+
 ## Shipping a release
 
 ```
@@ -61,6 +87,20 @@ Verify signing works: `security find-identity -v -p codesigning`
 ## Security posture (audited)
 
 Deliberate choices, so a later change does not undo them by accident:
+
+- **This app holds no credentials of its own.** Worth stating plainly, because
+  the obvious assumption is that an app showing your billing figures must be
+  storing a token somewhere. It does not. The claude.ai session lives entirely
+  in Chromium's own cookie jar inside the session partition; the app never
+  reads, copies, stores or logs it, and the only line that touches it at all is
+  `clearStorageData` on logout. `store.json` holds seven keys - usage numbers,
+  the heatmap, and UI preferences - and none of them are sensitive. This is why
+  `safeStorage` (the usual advice for Electron apps holding tokens) does not
+  apply: there is nothing to put in it. Keep it that way.
+- **Updates are verified twice before they run.** `latest-mac.yml` carries a
+  sha512 per file which electron-updater checks after download, and Squirrel
+  refuses to install a bundle that is not signed by the same Developer ID. A
+  compromised download alone is not enough to execute code.
 
 - **The widget window is pinned to `file://`** (`lockDownWidgetWindow`). It
   carries the preload bridge, so anything loaded into it can read and write the

@@ -14,6 +14,11 @@ const PARTITION = "persist:cfninjas-claude-usage";
 // window and the remote origin can see each other's storage" problems.
 const WIDGET_PARTITION = "persist:cfninjas-widget";
 const POLL_MS = 60 * 1000;
+// Backing off on repeated failures matters more here than in a web app: this
+// process runs all day on every install, so a claude.ai outage would otherwise
+// mean every copy retrying once a minute forever. Jitter stops a fleet of
+// installs settling into a synchronised burst.
+const POLL_MAX_MS = 15 * 60 * 1000;
 const STORE_PATH = path.join(app.getPath("userData"), "store.json");
 const ACTIVITY_MAX_DAYS = 35;
 const MIN_WINDOW_WIDTH = 210;
@@ -25,6 +30,8 @@ let authWindow = null; // stays alive (hidden once logged in) - it's our
                         // user log in and to make authenticated API calls.
 let tray = null;
 let pollTimer = null;
+let pollingActive = false;
+let pollFailures = 0;
 let saveBoundsHandle = null;
 let loginCheckRetryTimer = null;
 
@@ -247,6 +254,7 @@ async function runFetchUsage() {
     // claude.ai login window at someone who is already signed in.
     if (epoch !== sessionEpoch) return null; // signed out while this was in flight
     lastSuccessAt = stats.fetchedAt;
+    pollFailures = 0;
     setStoreValues({ claudeUsageStats: stats, hasAuthedBefore: true });
     updateTrayTitle(stats);
     return stats;
@@ -262,6 +270,7 @@ async function runFetchUsage() {
       lastSuccessAt: lastSuccessAt || null
     };
     if (epoch !== sessionEpoch) return null;
+    pollFailures = Math.min(pollFailures + 1, 4); // caps the delay at POLL_MAX_MS
     setStoreValues({ claudeUsageStats: stats });
     updateTrayTitle(stats);
     return stats;
@@ -532,7 +541,7 @@ async function checkLoggedInFromAuthWindow() {
   // it before bailing out - otherwise a full claude.ai browser window stays
   // parked on their desktop with no way to dismiss it except closing it, which
   // breaks fetching entirely.
-  if (pollTimer) {
+  if (pollingActive) {
     if (authWindow.isVisible() && !/\/login/.test(authWindow.webContents.getURL())) {
       authWindow.hide();
     }
@@ -562,13 +571,33 @@ async function checkLoggedInFromAuthWindow() {
 // Polling
 // -----------------------------------------------------------------------
 
+function nextPollDelay() {
+  const base =
+    pollFailures === 0
+      ? POLL_MS
+      : Math.min(POLL_MS * Math.pow(2, pollFailures), POLL_MAX_MS);
+  return Math.round(base * (0.85 + Math.random() * 0.3)); // +/-15% jitter
+}
+
+function scheduleNextPoll() {
+  if (!pollingActive) return;
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(runPoll, nextPollDelay());
+}
+
+async function runPoll() {
+  await fetchUsage(); // updates pollFailures itself, so a manual refresh counts too
+  scheduleNextPoll();
+}
+
 function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) clearTimeout(pollTimer);
+  pollingActive = true;
+  pollFailures = 0;
   // Stamp now so the watchdog does not fire against a first fetch still in
   // flight and restart a timer that is working fine.
   lastFetchCompletedAt = Date.now();
-  fetchUsage();
-  pollTimer = setInterval(fetchUsage, POLL_MS);
+  runPoll();
 }
 
 // A silent freeze is the worst failure this widget has: it looks like it is
@@ -577,7 +606,7 @@ function startPolling() {
 // rather than sitting there looking fine.
 function startPollWatchdog() {
   setInterval(() => {
-    if (!pollTimer) return; // not logged in yet; nothing to heal
+    if (!pollingActive) return; // not logged in yet; nothing to heal
     if (Date.now() - lastFetchCompletedAt > 3 * POLL_MS) {
       console.warn("[poll] no completed fetch in 3 cycles - restarting timer");
       startPolling();
@@ -587,7 +616,8 @@ function startPollWatchdog() {
 
 function stopPolling() {
   sessionEpoch += 1;
-  if (pollTimer) clearInterval(pollTimer);
+  pollingActive = false;
+  if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
 }
 
@@ -628,7 +658,7 @@ function maybeCheckForUpdates() {
 // Looking at the widget is the moment the number matters most, so don't make
 // the user wait out the rest of the poll interval for it.
 function refreshOnFocus() {
-  if (!pollTimer) return;
+  if (!pollingActive) return;
   if (Date.now() - lastFetchCompletedAt < 15 * 1000) return;
   fetchUsage();
 }
