@@ -8,11 +8,15 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "check": "node tests/check.js",
+    "test:render": "node tests/render.js",
+    "test": "npm run check && npm run test:render"
   },
   "devDependencies": {
     "electron": "^43.0.0",
     "electron-builder": "^26.0.0",
+    "playwright": "^1.62.1",
     "wrangler": "^4.127.1"
   },
   "build": {

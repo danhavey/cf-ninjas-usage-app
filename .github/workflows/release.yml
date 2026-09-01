@@ -23,7 +23,25 @@ permissions:
 # Uploading in-place is also faster: no 300MB round trip.
 
 jobs:
+  # Nothing reaches R2 unless this passes. Before it existed, a syntax error in
+  # widget.js would have been signed, notarized, published and auto-installed
+  # as a blank window - the pipeline never looked at the renderer at all.
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
   build-mac:
+    needs: checks
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,6 +125,7 @@ jobs:
             --file out/updates/latest-mac.yml --remote
 
   build-win:
+    needs: checks
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
