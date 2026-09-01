@@ -169,6 +169,20 @@ hook covers the case that matters: opening the widget is when you care whether
 it is current. Throttled to once per 10 minutes, because a single tray click
 fires both `show` and `focus`.
 
+**`npm ci` dies if package.json and package-lock.json disagree - and the most
+likely cause is a tool overwriting package.json from a stale copy.** Exactly
+that happened here: `wrangler` was added with `npm install --save-dev`, then a
+later edit to the `build.files` array wrote a whole package.json from a copy
+made BEFORE that install, silently dropping the dependency. The lock still
+listed wrangler, `npm ci` refused, and every build failed at the install step
+with nothing in the app's own code to blame. It went unnoticed for two releases
+because the tag pushed cleanly and nobody checked the update feed.
+
+Two rules. **Edit package.json in place; never write it wholesale from a copy
+you did not just read** - it is the one file both humans and tooling mutate.
+And **after any release, check the feed reports the new version** - a green
+push says nothing about whether the build ran.
+
 **Pin your CI tools, and expect the pin to surface a version conflict.**
 The workflow called `npx wrangler`, which downloads whatever npm serves at that
 moment - on a runner that also holds the Developer ID certificate. Adding
